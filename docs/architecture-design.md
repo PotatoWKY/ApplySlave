@@ -159,38 +159,37 @@
 
 ### 用户简历数据结构
 
-```json
-// config/profile.json
-{
-  "personal": {
-    "first_name": "三",
-    "last_name": "张",
-    "email": "zhangsan@email.com",
-    "phone": "+86-138xxxx0000",
-    "location": "上海"
-  },
-  "education": [
-    {
-      "school": "XX大学",
-      "degree": "本科",
-      "major": "计算机科学",
-      "start": "2018-09",
-      "end": "2022-06"
-    }
-  ],
-  "experience": [
-    {
-      "company": "XX科技",
-      "title": "后端工程师",
-      "start": "2022-07",
-      "end": "2025-01",
-      "description": "负责微服务架构设计与开发..."
-    }
-  ],
-  "skills": ["Python", "TypeScript", "Docker"],
-  "resume_file": "./resume.pdf",
-  "cover_letter_template": "./cover_letter.md"
-}
+```yaml
+# config/profile.yaml
+personal:
+  first_name: 三
+  last_name: 张
+  email: zhangsan@email.com
+  phone: "+86-138xxxx0000"
+  location: 上海
+
+education:
+  - school: XX大学
+    degree: 本科
+    major: 计算机科学
+    start: "2018-09"
+    end: "2022-06"
+
+experience:
+  - company: XX科技
+    title: 后端工程师
+    start: "2022-07"
+    end: "2025-01"
+    description: |
+      负责微服务架构设计与开发...
+
+skills:
+  - Python
+  - TypeScript
+  - Docker
+
+resume_file: ./resume.pdf
+cover_letter_template: ./cover_letter.md
 ```
 
 ### 投递记录
@@ -215,12 +214,12 @@
 
 | 层 | 技术 |
 |----|------|
-| 语言 | TypeScript (Node.js) |
-| 浏览器自动化 | Playwright |
-| 本地 LLM | Ollama (Qwen2.5 / Llama3) |
-| 配置 | JSON |
-| 日志 | pino |
-| CLI | commander |
+| 语言 | Python 3.12+ |
+| 浏览器自动化 | Playwright (playwright-python) |
+| 本地 LLM | Ollama (ollama-python) |
+| 配置 | YAML (PyYAML) |
+| 日志 | loguru |
+| CLI | typer |
 
 ---
 
@@ -230,63 +229,59 @@
 resume-bot/
 ├── src/
 │   ├── browser/
-│   │   ├── browser-manager.ts
-│   │   ├── dom-extractor.ts
-│   │   ├── action-executor.ts
-│   │   └── screenshot.ts
+│   │   ├── browser_manager.py
+│   │   ├── dom_extractor.py
+│   │   ├── action_executor.py
+│   │   └── screenshot.py
 │   ├── ai/
-│   │   ├── page-analyzer.ts
-│   │   ├── form-mapper.ts
-│   │   ├── decision-engine.ts
-│   │   └── prompt-builder.ts
+│   │   ├── page_analyzer.py
+│   │   ├── form_mapper.py
+│   │   ├── decision_engine.py
+│   │   └── prompt_builder.py
 │   ├── orchestrator/
-│   │   ├── job-queue.ts
-│   │   ├── flow-state-machine.ts
-│   │   ├── retry-handler.ts
-│   │   └── result-logger.ts
+│   │   ├── job_queue.py
+│   │   ├── flow_state_machine.py
+│   │   ├── retry_handler.py
+│   │   └── result_logger.py
 │   ├── config/
-│   │   └── config-manager.ts
-│   └── index.ts
+│   │   └── config_manager.py
+│   └── main.py
 ├── config/
-│   ├── profile.json         # 用户简历数据
-│   └── settings.json        # 运行配置
+│   ├── profile.yaml          # 用户简历数据
+│   └── settings.yaml         # 运行配置
 ├── data/
-│   └── applications.json    # 投递记录
-├── package.json
-└── tsconfig.json
+│   └── applications.json     # 投递记录
+├── pyproject.toml
+└── requirements.txt
 ```
 
 ---
 
 ## 七、核心流程伪代码
 
-```typescript
-async function applyToJob(url: string) {
-  const page = await browserManager.openPage(url);
-  
-  while (true) {
-    // 1. 提取页面结构
-    const dom = await domExtractor.extract(page);
-    
-    // 2. LLM 分析页面 + 生成操作指令
-    const prompt = promptBuilder.build(dom, userProfile);
-    const instructions = await llm.generate(prompt);
-    
-    // 3. 执行操作
-    for (const action of instructions.actions) {
-      await actionExecutor.execute(page, action);
-    }
-    
-    // 4. 判断是否完成
-    if (instructions.page_type === 'confirmation') {
-      resultLogger.log(url, 'submitted');
-      break;
-    }
-    
-    // 5. 等待页面变化后继续循环
-    await page.waitForLoadState('networkidle');
-  }
-}
+```python
+async def apply_to_job(url: str) -> None:
+    page = await browser_manager.open_page(url)
+
+    while True:
+        # 1. 提取页面结构
+        dom = await dom_extractor.extract(page)
+
+        # 2. LLM 分析页面 + 生成操作指令
+        prompt = prompt_builder.build(dom, user_profile)
+        instructions = await llm.generate(prompt)
+
+        # 3. 执行操作
+        for action in instructions.actions:
+            await action_executor.execute(page, action)
+
+        # 4. 判断是否完成
+        if instructions.page_type == "confirmation":
+            result_logger.log(url, "submitted")
+            break
+
+        # 5. 等待页面变化后继续循环
+        await page.wait_for_load_state("networkidle")
 ```
 
 ---

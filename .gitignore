@@ -205,3 +205,16 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ApplySlave 项目特定
+data/session.json          # 浏览器登录 session（含 Cookie）
+data/applications.json     # 投递记录
+data/*.log                 # 运行日志
+data/*.png                 # 调试截图
+config/profile.yaml        # 用户简历数据（敏感信息）
+config/secrets.yaml        # 密码等敏感信息
+resume.pdf                 # 简历文件
+cover_letter.md            # 求职信
+.venv/                     # Python 虚拟环境
+config/secrets.yaml          # 登录凭证（绝对不能提交）
+data/chrome_profile/        # 浏览器用户数据（含登录状态）

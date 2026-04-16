@@ -1,7 +1,7 @@
 # 开发工时估算
 
 > 最后更新：2026-02-13
-> 假设：1 人全职开发，熟悉 TypeScript / Playwright / LLM 集成
+> 假设：1 人全职开发，熟悉 Python / Playwright / LLM 集成
 
 ---
 
@@ -26,9 +26,9 @@
 
 | 任务 | 工时 | 产出 |
 |------|------|------|
-| TypeScript + Node.js 项目初始化 | 0.5 天 | package.json, tsconfig.json, 目录结构 |
-| Playwright + Ollama + pino + commander 依赖配置 | 0.5 天 | 依赖安装，基础 import 验证 |
-| 配置文件设计（profile.json, settings.json） | 0.5 天 | JSON schema，示例数据 |
+| TypeScript + Node.js 项目初始化 | 0.5 天 | pyproject.toml, requirements.txt, 目录结构 |
+| Playwright + Ollama + loguru + typer 依赖配置 | 0.5 天 | 依赖安装，基础 import 验证 |
+| 配置文件设计（profile.yaml, settings.yaml） | 0.5 天 | YAML schema，示例数据 |
 | ConfigManager 实现 | 0.5 天 | 配置加载、校验、默认值 |
 
 ---
@@ -101,8 +101,8 @@
 
 | 任务 | 工时 | 说明 |
 |------|------|------|
-| CLI 交互完善 | 1 天 | commander 命令设计（start/status/resume/config）、进度展示 |
-| 日志系统 | 0.5 天 | pino 结构化日志、日志级别、文件输出 |
+| CLI 交互完善 | 1 天 | typer 命令设计（start/status/resume/config）、进度展示 |
+| 日志系统 | 0.5 天 | loguru 结构化日志、日志级别、文件输出 |
 | 人工介入机制 | 1 天 | 验证码检测暂停、低置信度暂停、桌面通知 |
 | 错误处理兜底 | 1 天 | 全局异常捕获、优雅退出、状态保存 |
 | 文档 | 0.5 天 | README 使用说明、配置文档 |

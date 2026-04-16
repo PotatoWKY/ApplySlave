@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"name": ".kiro",
+			"path": "../../../Users/wukeyu/Desktop/krio customized files/.kiro"
+		},
+		{
+			"name": "ApplySlave",
+			"path": "."
+		}
+	],
+	"settings": {
+		"kiroAgent.configureMCP": "Disabled"
+	}
+}

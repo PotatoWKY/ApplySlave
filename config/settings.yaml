@@ -1,0 +1,44 @@
+# 运行配置
+browser:
+  headless: false          # false = 能看到浏览器操作，调试用
+  slow_mo: 0               # 设为 0，由 human_like 模块控制随机延迟
+
+linkedin:
+  # 账号密码在 config/secrets.yaml 中配置
+  search:
+    keywords: "Software Engineer"
+    location: "Seattle"
+    experience_level: ["Entry level", "Associate"]
+    date_posted: "Past week"
+    easy_apply_only: true   # true = 只搜 Easy Apply 职位
+
+llm:
+  model: "qwen2.5:7b"     # Ollama 模型名
+  base_url: "http://localhost:11434"
+  timeout: 60              # 推理超时（秒）
+  max_retries: 3           # JSON 解析失败重试次数
+
+apply:
+  dry_run: true              # true = 走完流程但不点提交，用于测试
+  max_applications: 25       # 单次运行最大投递数（实际会随机浮动 ±daily_max_variance）
+  retry_max: 3             # 单个职位最大重试次数
+  confidence_threshold: 0.7  # 低于此值暂停等人工介入
+
+# 反检测配置 — 模拟人类行为，降低被 LinkedIn 检测的风险
+anti_detection:
+  typing_delay_min: 50       # 打字每个字符最小延迟（ms）
+  typing_delay_max: 180      # 打字每个字符最大延迟（ms）
+  action_delay_min: 800      # 操作之间最小延迟（ms）— 点击、填写等
+  action_delay_max: 2500     # 操作之间最大延迟（ms）
+  page_delay_min: 3000       # 页面切换最小延迟（ms）
+  page_delay_max: 8000       # 页面切换最大延迟（ms）
+  between_jobs_min: 5000     # 两个职位之间最小延迟（ms）
+  between_jobs_max: 15000    # 两个职位之间最大延迟（ms）
+  active_hours_start: 8      # 允许运行的开始时间（24h 制）
+  active_hours_end: 22       # 允许运行的结束时间
+  daily_max_variance: 8      # 每日最大投递数的随机浮动范围（只减不加）
+  browse_without_apply_chance: 0.15  # 浏览但不投递的概率（模拟人类挑选）
+
+logging:
+  level: "DEBUG"           # DEBUG / INFO / WARNING / ERROR
+  file: "data/apply-slave.log"
