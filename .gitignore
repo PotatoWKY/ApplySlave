@@ -218,3 +218,17 @@ cover_letter.md            # 求职信
 .venv/                     # Python 虚拟环境
 config/secrets.yaml          # 登录凭证（绝对不能提交）
 data/chrome_profile/        # 浏览器用户数据（含登录状态）
+
+# ---- v2 additions ----
+
+# uv workspace
+uv.lock
+
+# Frontend (apps/applyslave-desktop)
+apps/applyslave-desktop/node_modules/
+apps/applyslave-desktop/dist/
+apps/applyslave-desktop/src-tauri/target/
+apps/applyslave-desktop/src-tauri/gen/
+
+# Tauri bundle output
+apps/applyslave-desktop/src-tauri/bundle/

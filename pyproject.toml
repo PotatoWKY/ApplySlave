@@ -1,15 +1,51 @@
-[project]
-name = "apply-slave"
-version = "0.1.0"
-description = "Filling out the same form 200 times is not a job. It's a bug in the hiring process."
-requires-python = ">=3.12"
-dependencies = [
-    "playwright>=1.40",
-    "ollama>=0.4",
-    "pyyaml>=6.0",
-    "loguru>=0.7",
-    "typer>=0.9",
+# Root workspace manifest. This project has no code itself;
+# it only declares the workspace members and shared tooling config.
+
+[tool.uv.workspace]
+members = [
+    "packages/shared",
+    "packages/profile-store",
+    "packages/job-discovery",
+    "packages/applicator",
+    "packages/orchestrator",
+    "services/backend",
 ]
 
-[project.scripts]
-apply-slave = "src.main:app"
+[tool.uv.sources]
+applyslave-shared = { workspace = true }
+applyslave-profile-store = { workspace = true }
+applyslave-job-discovery = { workspace = true }
+applyslave-applicator = { workspace = true }
+applyslave-orchestrator = { workspace = true }
+applyslave-backend = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "pyright>=1.1",
+    "reportlab>=4.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "packages/shared/tests",
+    "packages/profile-store/tests",
+    "packages/job-discovery/tests",
+    "packages/applicator/tests",
+    "packages/orchestrator/tests",
+    "services/backend/tests",
+]
+asyncio_mode = "auto"

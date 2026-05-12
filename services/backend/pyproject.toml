@@ -1,0 +1,28 @@
+[project]
+name = "applyslave-backend"
+version = "0.1.0"
+description = "FastAPI HTTP service exposing ApplySlave functionality to the desktop frontend"
+requires-python = ">=3.12"
+dependencies = [
+    "applyslave-shared",
+    "applyslave-profile-store",
+    "applyslave-job-discovery",
+    "applyslave-applicator",
+    "applyslave-orchestrator",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "websockets>=13",
+]
+
+[project.scripts]
+applyslave-backend = "applyslave.backend.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/applyslave/backend"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
