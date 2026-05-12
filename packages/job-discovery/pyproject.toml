@@ -18,3 +18,6 @@ packages = ["src/applyslave/job_discovery"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/applyslave/job_discovery/companies.yaml" = "applyslave/job_discovery/companies.yaml"

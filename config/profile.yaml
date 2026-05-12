@@ -1,0 +1,38 @@
+# 用户简历数据 — 请替换为你的真实信息
+personal:
+  first_name: "三"
+  last_name: "张"
+  email: "zhangsan@email.com"
+  phone: "+86-13800000000"
+  location: "上海"
+  linkedin_url: "https://www.linkedin.com/in/zhangsan"
+
+education:
+  - school: "XX大学"
+    degree: "本科"
+    major: "计算机科学"
+    start: "2018-09"
+    end: "2022-06"
+
+experience:
+  - company: "XX科技"
+    title: "后端工程师"
+    start: "2022-07"
+    end: "2025-01"
+    description: "负责微服务架构设计与开发"
+
+skills:
+  - "Python"
+  - "TypeScript"
+  - "Docker"
+  - "AWS"
+
+resume_file: "./resume.pdf"
+cover_letter_template: "./cover_letter.md"
+
+# LinkedIn Easy Apply 附加问题的预设答案
+easy_apply_answers:
+  years_of_experience: "3"
+  require_visa_sponsorship: "No"
+  willing_to_relocate: "Yes"
+  salary_expectation: "Negotiable"

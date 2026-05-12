@@ -1,0 +1,48 @@
+# Seed list of companies hiring publicly through each ATS.
+# Edit this file to change which companies get crawled.
+#
+# Company slug = the path segment in the company's career page URL
+# (e.g. boards.greenhouse.io/stripe → slug is "stripe").
+
+greenhouse:
+  - airbnb
+  - stripe
+  - figma
+  - databricks
+  - anthropic
+  - dropbox
+  - doordash
+  - instacart
+  - coinbase
+  - opendoor
+  - robinhood
+  - plaid
+  - affirm
+  - elastic
+  - confluent
+
+lever:
+  - netflix
+  - ramp
+  - brex
+  - mixpanel
+  - alchemy
+  - spotify
+  - shopify
+  - palantir
+  - fivetran
+  - ironclad
+
+ashby:
+  - posthog
+  - supabase
+  - vercel
+  - linear
+  - replicate
+  - hex
+  - clerk
+
+workable:
+  - aircall
+  - stampli
+  - huspy
