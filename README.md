@@ -2,20 +2,29 @@
 
 Filling out the same form 200 times is not a job. It's a bug in the hiring process.
 
-Local-first resume auto-apply tool: talks to public ATS APIs (Greenhouse, Lever,
-Ashby, Workable), uses a local LLM to fill external application forms, and ships
-as a cross-platform desktop app (macOS / Windows / Linux).
+Local-first resume auto-apply tool: discovers jobs via public ATS APIs
+(Greenhouse, Lever, Ashby, Workable), uses a local LLM to fill external
+application forms, and ships as a cross-platform desktop app
+(macOS / Windows / Linux).
 
-## Status
+## Status — v2 active
 
-Architecture in transition. Two worlds live side by side:
+Working monorepo with green tests end-to-end. v1 `src/` is kept for reference
+only.
 
-- `src/` — v1 Python CLI with LinkedIn hardcoded entry (kept for reference)
-- `packages/`, `services/`, `apps/` — v2 monorepo (active)
+| Layer                    | Tests passing                                      |
+| ------------------------ | -------------------------------------------------- |
+| shared (models, protocols) | 7/7                                              |
+| profile-store (SQLite, PDF parse) | 6/6                                       |
+| job-discovery (4 ATS clients + aggregator) | 14/14                            |
+| applicator (Playwright + form-filler + LLM glue) | 11/11                      |
+| orchestrator (state machine, retry, logger) | 9/9                             |
+| services/backend (FastAPI) | 8/8                                              |
+| **Total**                | **55/55**                                          |
 
-Design docs for the current direction are in [`docs-v2/`](./docs-v2).
+Design docs for the current direction live in [`docs-v2/`](./docs-v2).
 
-## Repository Layout (v2)
+## Repository Layout
 
 ```
 packages/
@@ -29,12 +38,12 @@ services/
 └── backend/         # FastAPI HTTP/WebSocket service (localhost:8765)
 
 apps/
-└── applyslave-desktop/   # Tauri 2 + React + TypeScript desktop app
-    ├── src/               # React + TanStack Query + Tailwind CSS
-    └── src-tauri/         # Rust shell: manages Python subprocess
+└── applyslave-desktop/   # Tauri 2 + React + TypeScript + TanStack Query
+    ├── src/               # React pages + API client
+    └── src-tauri/         # Rust shell (manages Python subprocess)
 
 docs-v2/             # Architecture, API contract, packaging, plan
-src/                 # v1 Python code (legacy reference)
+src/                 # v1 Python code (legacy, not on the active path)
 ```
 
 ## Toolchain
@@ -49,42 +58,93 @@ src/                 # v1 Python code (legacy reference)
 
 ## Development
 
-### Python backend
+### One-time setup
 
 ```bash
-# Sync all workspace packages in editable mode
+# Python workspace + deps
 uv sync --all-packages
 
-# Run backend HTTP server
-uv run applyslave-backend --port 8765
+# Playwright browsers
+uv run playwright install chromium
 
-# Health check
-curl http://localhost:8765/api/health
-# → {"status":"ok","version":"0.1.0"}
+# Frontend deps
+cd apps/applyslave-desktop
+pnpm install
+cd -
 ```
 
-### Desktop app
+### Run tests
+
+```bash
+uv run pytest                    # all 55 tests
+uv run pytest packages/shared   # one package
+```
+
+### Run backend
+
+```bash
+uv run applyslave-backend --port 8765
+
+# Sanity check
+curl http://localhost:8765/api/health
+# → {"status":"ok","version":"0.1.0",...}
+```
+
+### Run frontend (dev mode)
 
 ```bash
 cd apps/applyslave-desktop
 
-# Install frontend deps (first time)
-pnpm install
+# Vite dev server only (fastest iteration, no Tauri window)
+pnpm exec vite
 
-# Dev mode: starts Vite HMR + Tauri shell; hot-reload on save
+# Full Tauri window with Rust shell
 pnpm tauri dev
-
-# Production build (creates .dmg / .exe / .AppImage)
-pnpm tauri build
 ```
 
-The Tauri shell expects the Python backend running on `localhost:8765`. In
-development, start the backend in a separate terminal with `uv run
-applyslave-backend`. Later, Tauri will spawn it as a managed subprocess
-automatically (see [docs-v2/packaging-strategy.md](./docs-v2/packaging-strategy.md)).
+The frontend expects the Python backend on `localhost:8765`. Start it in a
+separate terminal during development. In packaged builds the Tauri shell
+will spawn it as a managed subprocess.
+
+### Smoke-test the real ATS integration
+
+```bash
+uv run python scripts/smoke_greenhouse.py
+# → "Fetched N engineering jobs from Figma" (hits the real Greenhouse API)
+```
+
+## What works today
+
+- **Profile management**: save / load structured user profile in SQLite,
+  upload PDF resume, auto-parse common fields (name, email, phone, links).
+- **Job discovery**: fan out across Greenhouse + Lever + Ashby + Workable
+  public APIs (30+ seed companies in `companies.yaml`), filter + dedupe.
+- **Backend API**: FastAPI service with endpoints for profile, discovery,
+  applications, model lifecycle, plus a WebSocket hub for progress events.
+- **Browser automation**: persistent-context Chromium with stealth scripts,
+  DOM extractor with label resolution, mechanical action executor.
+- **Form-filler**: rule-based deterministic mapping (covers common fields
+  without LLM) + LLM fallback wired through a `LLMClient` protocol.
+- **Orchestrator**: batched apply with per-job status persistence,
+  exponential-backoff retry, event callbacks.
+- **Frontend**: three pages (Profile, Discover, Applications) wired with
+  TanStack Query + Tailwind + React Router.
+
+## What's scaffolded but needs the model
+
+- **LLM inference**: code paths exist but require downloading
+  Qwen2.5-7B-Instruct (~4GB). Call `POST /api/model/download` or let the
+  UI drive the first-run flow.
+- **ApplicatorEngine end-to-end**: works against the fixture test form;
+  will work against real external apply pages once the LLM fallback is
+  exercised in real traffic.
 
 ## Next steps
 
-See [`docs-v2/implementation-plan.md`](./docs-v2/implementation-plan.md) for the
-phased roadmap. Currently at **Phase 1.0 (scaffolding) complete** — ready to
-start implementing packages.
+Continue with `docs-v2/implementation-plan.md`:
+
+- Hook `ApplicatorEngine` into the backend so `/api/applications` actually
+  fires the pipeline instead of just queueing records.
+- Wire Tauri's Rust shell to spawn the backend subprocess on app start
+  (see `docs-v2/packaging-strategy.md`).
+- Build the `.dmg` / `.exe` / `.AppImage` packaging pipeline.

@@ -1,58 +1,105 @@
 import { useQuery } from "@tanstack/react-query";
+import { NavLink, Navigate, Route, BrowserRouter, Routes } from "react-router-dom";
 
-const BACKEND_URL = "http://localhost:8765";
+import { ApplicationsPage } from "./pages/Applications";
+import { DiscoveryPage } from "./pages/Discovery";
+import { ProfilePage } from "./pages/Profile";
+import { backendClient } from "./services/backend";
 
-type HealthResponse = {
-  status: string;
-  version: string;
-};
-
-async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch(`${BACKEND_URL}/api/health`);
-  if (!response.ok) {
-    throw new Error(`Backend returned ${response.status}`);
-  }
-  return response.json();
-}
-
-function BackendStatus() {
+function BackendStatusPill() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["health"],
-    queryFn: fetchHealth,
+    queryFn: backendClient.getHealth,
+    refetchInterval: 10_000,
     retry: 3,
-    retryDelay: 500,
   });
-
   if (isLoading) {
-    return <span className="text-slate-500">Connecting to backend…</span>;
+    return <Pill tone="slate">connecting…</Pill>;
   }
   if (error) {
-    return (
-      <span className="text-red-500">
-        Backend unreachable: {(error as Error).message}
-      </span>
-    );
+    return <Pill tone="red">backend offline</Pill>;
   }
   return (
-    <span className="text-green-600">
-      Backend {data?.status} (v{data?.version})
+    <Pill tone={data?.model_installed ? "green" : "amber"}>
+      backend {data?.status}
+      {data?.model_installed ? " • model ready" : " • model missing"}
+    </Pill>
+  );
+}
+
+function Pill({
+  tone,
+  children,
+}: {
+  tone: "slate" | "red" | "green" | "amber";
+  children: React.ReactNode;
+}) {
+  const classes: Record<string, string> = {
+    slate: "bg-slate-100 text-slate-700",
+    red: "bg-red-100 text-red-700",
+    green: "bg-green-100 text-green-700",
+    amber: "bg-amber-100 text-amber-700",
+  };
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-medium ${classes[tone]}`}>
+      {children}
     </span>
   );
 }
 
-function App() {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-slate-50 p-8 text-slate-900">
-      <h1 className="text-3xl font-semibold">ApplySlave</h1>
-      <p className="mt-2 text-slate-600">
-        Local-first resume auto-apply tool. Desktop scaffold is running.
-      </p>
-      <div className="mt-6 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-2 text-lg font-medium">Backend status</h2>
-        <BackendStatus />
-      </div>
-    </main>
+    <div className="flex min-h-screen bg-slate-50">
+      <aside className="w-60 border-r border-slate-200 bg-white p-4">
+        <div className="mb-6">
+          <h1 className="text-lg font-semibold">ApplySlave</h1>
+          <p className="mt-1 text-xs text-slate-500">Auto-apply, locally</p>
+        </div>
+        <nav className="space-y-1 text-sm">
+          <NavItem to="/profile">Profile</NavItem>
+          <NavItem to="/discover">Discover jobs</NavItem>
+          <NavItem to="/applications">Applications</NavItem>
+        </nav>
+      </aside>
+      <main className="flex-1">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+          <span className="text-sm text-slate-500">Local desktop build</span>
+          <BackendStatusPill />
+        </header>
+        <div className="p-6">{children}</div>
+      </main>
+    </div>
   );
 }
 
-export default App;
+function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `block rounded-md px-3 py-2 transition ${
+          isActive
+            ? "bg-slate-100 font-medium text-slate-900"
+            : "text-slate-600 hover:bg-slate-50"
+        }`
+      }
+    >
+      {children}
+    </NavLink>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Shell>
+        <Routes>
+          <Route path="/" element={<Navigate to="/profile" replace />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/discover" element={<DiscoveryPage />} />
+          <Route path="/applications" element={<ApplicationsPage />} />
+        </Routes>
+      </Shell>
+    </BrowserRouter>
+  );
+}

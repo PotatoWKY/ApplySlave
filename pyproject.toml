@@ -49,3 +49,4 @@ testpaths = [
     "services/backend/tests",
 ]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
