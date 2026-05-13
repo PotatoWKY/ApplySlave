@@ -31,14 +31,29 @@ router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 
 async def _get_llm_client_or_none() -> LLMClient | None:
-    """Return a loaded LLM client if the model is installed, else None."""
+    """Return a loaded LLM client if the model is installed, else None.
+
+    Cached module-global so the model stays loaded across requests. The
+    first upload still pays ~10s for Metal shader compilation; subsequent
+    uploads in the same backend session return in ~5-7s on an M3 Pro.
+    """
+    global _CACHED_LLM_CLIENT  # noqa: PLW0603
+
+    if _CACHED_LLM_CLIENT is not None:
+        return _CACHED_LLM_CLIENT
+
     manager = ModelManager(data_dir=get_data_dir())
     if not manager.is_installed():
         return None
+
     # Lazy import so we only pay the llama-cpp import cost when really used
     from applyslave.applicator.llm import LLMClient as LocalLLMClient
 
-    return LocalLLMClient(model_path=manager.model_path)
+    _CACHED_LLM_CLIENT = LocalLLMClient(model_path=manager.model_path)
+    return _CACHED_LLM_CLIENT
+
+
+_CACHED_LLM_CLIENT: LLMClient | None = None
 
 
 @router.get("", response_model=UserProfile | None)
@@ -81,9 +96,14 @@ async def upload_resume(
         # installed yet (first-run flow before model download).
         llm_client = await _get_llm_client_or_none()
         llm_used = False
+        llm_error: str | None = None
         if llm_client is not None:
             try:
                 resume_text = extract_text(stored_path)
+                logger.info(
+                    "Running LLM extraction on resume (%d chars)",
+                    len(resume_text),
+                )
                 regex_profile = _regex_to_profile(regex_parsed, stored_path)
                 extractor = ResumeExtractor(llm_client=llm_client)
                 extracted = await extractor.extract(
@@ -95,6 +115,7 @@ async def upload_resume(
                 )
                 store.save_profile(extracted)
                 llm_used = True
+                logger.info("LLM extraction succeeded")
                 return {
                     "path": str(stored_path),
                     "llm_used": True,
@@ -103,6 +124,7 @@ async def upload_resume(
                 }
             except Exception as error:  # noqa: BLE001
                 logger.exception("LLM extraction failed, falling back to regex")
+                llm_error = f"{type(error).__name__}: {error}"
 
         # LLM unavailable or crashed → regex-only path
         _merge_regex_into_store(store, regex_parsed, str(stored_path))
@@ -110,6 +132,7 @@ async def upload_resume(
         return {
             "path": str(stored_path),
             "llm_used": llm_used,
+            "llm_error": llm_error,
             "profile": current.model_dump(mode="json") if current else None,
             "parsed_fields": _regex_report(regex_parsed),
         }
@@ -144,20 +167,19 @@ def _regex_to_profile(parsed: ParsedResume, resume_path: Path) -> UserProfile:
 def _merge_regex_into_store(
     store: ProfileStore, parsed: ParsedResume, resume_path: str
 ) -> None:
-    """Regex-only path: fill blanks in the existing profile."""
-    current = store.load_profile()
-    updates: dict = {"resume_path": resume_path}
-    base = current or UserProfile(first_name="", last_name="", email="")
-    if not base.first_name and parsed.first_name:
-        updates["first_name"] = parsed.first_name
-    if not base.last_name and parsed.last_name:
-        updates["last_name"] = parsed.last_name
-    if not base.email and parsed.email:
-        updates["email"] = parsed.email
-    if not base.phone and parsed.phone:
-        updates["phone"] = parsed.phone
-    if not base.linkedin_url and parsed.linkedin_url:
-        updates["linkedin_url"] = parsed.linkedin_url
-    if not base.github_url and parsed.github_url:
-        updates["github_url"] = parsed.github_url
-    store.save_profile(base.model_copy(update=updates))
+    """Regex-only path: write a fresh profile from whatever regex extracted.
+
+    We treat a new resume upload as ground truth and overwrite the existing
+    profile. If the user had manually edited fields, the UI should warn
+    them before calling this endpoint (TODO).
+    """
+    profile = UserProfile(
+        first_name=parsed.first_name or "",
+        last_name=parsed.last_name or "",
+        email=parsed.email or "",
+        phone=parsed.phone,
+        linkedin_url=parsed.linkedin_url,
+        github_url=parsed.github_url,
+        resume_path=resume_path,
+    )
+    store.save_profile(profile)

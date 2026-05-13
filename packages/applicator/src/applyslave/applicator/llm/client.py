@@ -22,7 +22,7 @@ class LLMClient:
         self,
         *,
         model_path: Path,
-        n_ctx: int = 8192,
+        n_ctx: int = 16384,
         n_gpu_layers: int = -1,
         verbose: bool = False,
     ) -> None:
@@ -66,7 +66,10 @@ class LLMClient:
 
         def _run() -> str:
             kwargs: dict[str, Any] = {
-                "max_tokens": 1024,
+                # Generous output budget: resume extractions for
+                # candidates with many roles or skills easily exceed 1k.
+                # Qwen3-4B's n_ctx_train is 262k, so 4k is safe.
+                "max_tokens": 4096,
                 "temperature": 0.2,
                 "response_format": {"type": "json_object"}
                 if schema is None

@@ -71,10 +71,13 @@ export const backendClient = {
   uploadResume: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    return request<{ path: string; parsed_fields: Record<string, string | null> }>(
-      "/api/profile/resume",
-      { method: "POST", body: formData },
-    );
+    return request<{
+      path: string;
+      llm_used: boolean;
+      llm_error?: string | null;
+      profile: UserProfile | null;
+      parsed_fields: Record<string, string | null>;
+    }>("/api/profile/resume", { method: "POST", body: formData });
   },
 
   startDiscovery: (payload: DiscoverRequest) =>

@@ -5,6 +5,7 @@ import { ApplicationsPage } from "./pages/Applications";
 import { DiscoveryPage } from "./pages/Discovery";
 import { ProfilePage } from "./pages/Profile";
 import { backendClient } from "./services/backend";
+import type { UserProfile } from "./types/api";
 
 function BackendStatusPill() {
   const { data, isLoading, error } = useQuery({
@@ -89,12 +90,35 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   );
 }
 
+function RootRedirect() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["profile"],
+    queryFn: backendClient.getProfile,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="py-10 text-center text-sm text-slate-500">
+        Checking profile…
+      </div>
+    );
+  }
+
+  const hasProfile = profileLooksComplete(data);
+  return <Navigate to={hasProfile ? "/discover" : "/profile"} replace />;
+}
+
+function profileLooksComplete(profile: UserProfile | null | undefined): boolean {
+  if (!profile) return false;
+  return Boolean(profile.first_name && profile.email);
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Shell>
         <Routes>
-          <Route path="/" element={<Navigate to="/profile" replace />} />
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/discover" element={<DiscoveryPage />} />
           <Route path="/applications" element={<ApplicationsPage />} />
