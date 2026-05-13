@@ -68,9 +68,11 @@ async def test_upload_resume_autofills_profile(
     assert response.status_code == 201
     body = response.json()
     assert body["path"].endswith(".pdf")
+    # Model isn't installed in CI, so the regex-only path runs
+    assert body["llm_used"] is False
     parsed = body["parsed_fields"]
     assert parsed["detected_email"] == "san.zhang@example.com"
 
-    # The profile should now be populated from the parse results
+    # The profile should now be populated from the regex parse results
     profile = (await backend_client.get("/api/profile")).json()
     assert profile["first_name"] == "San"

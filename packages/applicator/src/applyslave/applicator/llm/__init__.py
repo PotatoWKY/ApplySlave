@@ -7,6 +7,7 @@ from applyslave.applicator.llm.model_manager import (
     ModelManager,
 )
 from applyslave.applicator.llm.prompt_builder import DefaultPromptBuilder
+from applyslave.applicator.llm.resume_extractor import ResumeExtractor
 
 __all__ = [
     "DEFAULT_MODEL_NAME",
@@ -14,5 +15,6 @@ __all__ = [
     "DefaultPromptBuilder",
     "LLMClient",
     "ModelManager",
+    "ResumeExtractor",
     "StaticLLMClient",
 ]

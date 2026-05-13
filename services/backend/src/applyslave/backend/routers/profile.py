@@ -2,17 +2,43 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
-from applyslave.backend.dependencies import get_profile_store
-from applyslave.profile_store import ProfileStore, parse_resume
+from applyslave.applicator.llm import (
+    LLMClient,
+    ModelManager,
+    ResumeExtractor,
+)
+from applyslave.backend.dependencies import (
+    get_data_dir,
+    get_profile_store,
+)
+from applyslave.profile_store import (
+    ParsedResume,
+    ProfileStore,
+    extract_text,
+    parse_resume,
+)
 from applyslave.shared import UserProfile
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/profile", tags=["profile"])
+
+
+async def _get_llm_client_or_none() -> LLMClient | None:
+    """Return a loaded LLM client if the model is installed, else None."""
+    manager = ModelManager(data_dir=get_data_dir())
+    if not manager.is_installed():
+        return None
+    # Lazy import so we only pay the llama-cpp import cost when really used
+    from applyslave.applicator.llm import LLMClient as LocalLLMClient
+
+    return LocalLLMClient(model_path=manager.model_path)
 
 
 @router.get("", response_model=UserProfile | None)
@@ -42,8 +68,6 @@ async def upload_resume(
     if suffix.lower() != ".pdf":
         raise HTTPException(status_code=415, detail="File extension must be .pdf")
 
-    # Stream to a temp file before handing to ProfileStore so we don't keep
-    # the whole resume in memory.
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         content = await file.read()
         tmp.write(content)
@@ -51,34 +75,89 @@ async def upload_resume(
 
     try:
         stored_path = store.save_resume_file(tmp_path)
-        parsed = parse_resume(stored_path)
-        # Auto-merge detected fields into the existing profile if present
+        regex_parsed = parse_resume(stored_path)
+
+        # Try the LLM path; fall back to regex-only if the model isn't
+        # installed yet (first-run flow before model download).
+        llm_client = await _get_llm_client_or_none()
+        llm_used = False
+        if llm_client is not None:
+            try:
+                resume_text = extract_text(stored_path)
+                regex_profile = _regex_to_profile(regex_parsed, stored_path)
+                extractor = ResumeExtractor(llm_client=llm_client)
+                extracted = await extractor.extract(
+                    resume_text=resume_text,
+                    fallback=regex_profile,
+                )
+                extracted = extracted.model_copy(
+                    update={"resume_path": str(stored_path)}
+                )
+                store.save_profile(extracted)
+                llm_used = True
+                return {
+                    "path": str(stored_path),
+                    "llm_used": True,
+                    "profile": extracted.model_dump(mode="json"),
+                    "parsed_fields": _regex_report(regex_parsed),
+                }
+            except Exception as error:  # noqa: BLE001
+                logger.exception("LLM extraction failed, falling back to regex")
+
+        # LLM unavailable or crashed → regex-only path
+        _merge_regex_into_store(store, regex_parsed, str(stored_path))
         current = store.load_profile()
-        updates: dict = {"resume_path": str(stored_path)}
-        if current is not None:
-            if current.first_name in {"", None} and parsed.first_name:
-                updates["first_name"] = parsed.first_name
-            if current.last_name in {"", None} and parsed.last_name:
-                updates["last_name"] = parsed.last_name
-            if not current.email and parsed.email:
-                updates["email"] = parsed.email
-            if not current.phone and parsed.phone:
-                updates["phone"] = parsed.phone
-            if not current.linkedin_url and parsed.linkedin_url:
-                updates["linkedin_url"] = parsed.linkedin_url
-            if not current.github_url and parsed.github_url:
-                updates["github_url"] = parsed.github_url
-            store.save_profile(current.model_copy(update=updates))
         return {
             "path": str(stored_path),
-            "parsed_fields": {
-                "detected_first_name": parsed.first_name,
-                "detected_last_name": parsed.last_name,
-                "detected_email": parsed.email,
-                "detected_phone": parsed.phone,
-                "detected_linkedin_url": parsed.linkedin_url,
-                "detected_github_url": parsed.github_url,
-            },
+            "llm_used": llm_used,
+            "profile": current.model_dump(mode="json") if current else None,
+            "parsed_fields": _regex_report(regex_parsed),
         }
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def _regex_report(parsed: ParsedResume) -> dict:
+    return {
+        "detected_first_name": parsed.first_name,
+        "detected_last_name": parsed.last_name,
+        "detected_email": parsed.email,
+        "detected_phone": parsed.phone,
+        "detected_linkedin_url": parsed.linkedin_url,
+        "detected_github_url": parsed.github_url,
+    }
+
+
+def _regex_to_profile(parsed: ParsedResume, resume_path: Path) -> UserProfile:
+    """Build a minimal UserProfile from the regex parse for LLM fallback."""
+    return UserProfile(
+        first_name=parsed.first_name or "",
+        last_name=parsed.last_name or "",
+        email=parsed.email or "",
+        phone=parsed.phone,
+        linkedin_url=parsed.linkedin_url,
+        github_url=parsed.github_url,
+        resume_path=str(resume_path),
+    )
+
+
+def _merge_regex_into_store(
+    store: ProfileStore, parsed: ParsedResume, resume_path: str
+) -> None:
+    """Regex-only path: fill blanks in the existing profile."""
+    current = store.load_profile()
+    updates: dict = {"resume_path": resume_path}
+    base = current or UserProfile(first_name="", last_name="", email="")
+    if not base.first_name and parsed.first_name:
+        updates["first_name"] = parsed.first_name
+    if not base.last_name and parsed.last_name:
+        updates["last_name"] = parsed.last_name
+    if not base.email and parsed.email:
+        updates["email"] = parsed.email
+    if not base.phone and parsed.phone:
+        updates["phone"] = parsed.phone
+    if not base.linkedin_url and parsed.linkedin_url:
+        updates["linkedin_url"] = parsed.linkedin_url
+    if not base.github_url and parsed.github_url:
+        updates["github_url"] = parsed.github_url
+    store.save_profile(base.model_copy(update=updates))

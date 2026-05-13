@@ -17,10 +17,10 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MODEL_NAME = "qwen2.5-7b-instruct-q4_k_m"
+DEFAULT_MODEL_NAME = "qwen3-4b-instruct-2507-q4_k_m"
 DEFAULT_MODEL_URL = (
-    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/"
-    "qwen2.5-7b-instruct-q4_k_m.gguf"
+    "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/"
+    "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 )
 
 
