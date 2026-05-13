@@ -1,9 +1,9 @@
 /**
  * HTTP client for the ApplySlave Python backend.
  *
- * Port is hard-coded in development because Vite runs on 1420 and the
- * Python server on 8765. In packaged builds the Rust shell launches the
- * backend on 8765 too, so the same URL works.
+ * The port comes from the Tauri shell via `invoke('backend_port')` when
+ * running inside Tauri. When the frontend is loaded in a plain browser
+ * (e.g. via `pnpm exec vite`), we fall back to the dev default 8765.
  */
 
 import type {
@@ -17,20 +17,38 @@ import type {
   UserProfile,
 } from "../types/api";
 
-const BACKEND_URL = "http://localhost:8765";
+const DEFAULT_BACKEND_PORT = 8765;
 
-async function request<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(`${BACKEND_URL}${path}`, init);
+async function resolveBackendUrl(): Promise<string> {
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const port = await invoke<number>("backend_port");
+      return `http://localhost:${port}`;
+    } catch (error) {
+      console.warn("Failed to resolve backend port via Tauri, using default", error);
+    }
+  }
+  return `http://localhost:${DEFAULT_BACKEND_PORT}`;
+}
+
+let backendUrlPromise: Promise<string> | null = null;
+function getBackendUrl(): Promise<string> {
+  if (backendUrlPromise === null) {
+    backendUrlPromise = resolveBackendUrl();
+  }
+  return backendUrlPromise;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const baseUrl = await getBackendUrl();
+  const response = await fetch(`${baseUrl}${path}`, init);
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
       `${init?.method ?? "GET"} ${path} → ${response.status}${body ? `: ${body}` : ""}`,
     );
   }
-  // 204s etc.
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -84,8 +102,10 @@ export const backendClient = {
 
 export function openWebSocket(
   onMessage: (event: MessageEvent) => void,
-): WebSocket {
-  const ws = new WebSocket(`${BACKEND_URL.replace("http", "ws")}/api/ws`);
-  ws.onmessage = onMessage;
-  return ws;
+): Promise<WebSocket> {
+  return getBackendUrl().then((baseUrl) => {
+    const ws = new WebSocket(`${baseUrl.replace("http", "ws")}/api/ws`);
+    ws.onmessage = onMessage;
+    return ws;
+  });
 }

@@ -80,31 +80,42 @@ uv run pytest                    # all 55 tests
 uv run pytest packages/shared   # one package
 ```
 
-### Run backend
-
-```bash
-uv run applyslave-backend --port 8765
-
-# Sanity check
-curl http://localhost:8765/api/health
-# → {"status":"ok","version":"0.1.0",...}
-```
-
-### Run frontend (dev mode)
+### Run the app (one command)
 
 ```bash
 cd apps/applyslave-desktop
-
-# Vite dev server only (fastest iteration, no Tauri window)
-pnpm exec vite
-
-# Full Tauri window with Rust shell
 pnpm tauri dev
 ```
 
-The frontend expects the Python backend on `localhost:8765`. Start it in a
-separate terminal during development. In packaged builds the Tauri shell
-will spawn it as a managed subprocess.
+This spawns a native macOS window, starts Vite for hot-reload, and launches
+the Python backend as a child process of the Tauri shell. On Ctrl-C (or
+closing the window) the whole tree — Tauri, Vite, uv, Python — shuts down
+cleanly.
+
+### Run pieces separately (for faster iteration)
+
+```bash
+# Terminal 1 – Python backend
+uv run applyslave-backend --port 8765
+
+# Terminal 2 – Frontend only (browser, no Tauri shell)
+cd apps/applyslave-desktop
+pnpm exec vite
+# open http://localhost:1420
+```
+
+### Build a production app
+
+```bash
+cd apps/applyslave-desktop
+pnpm tauri build
+```
+
+Produces `src-tauri/target/release/bundle/dmg/ApplySlave_*.dmg` (once
+code-signing is set up). Note: the current build invokes `uv run ...` at
+runtime, so the shipped `.dmg` still expects a Python workspace at the
+build-time path. Fully standalone packaging is in
+[`docs-v2/packaging-strategy.md`](./docs-v2/packaging-strategy.md).
 
 ### Smoke-test the real ATS integration
 
