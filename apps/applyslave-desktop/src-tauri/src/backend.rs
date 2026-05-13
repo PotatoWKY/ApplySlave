@@ -7,6 +7,7 @@
 //! day to day, and the same shape of Command + wait-for-health will be
 //! reused once the bundle exists.
 
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -33,12 +34,21 @@ impl PythonBackend {
         let workspace_root = workspace_root();
         log::info!("Spawning backend from {:?}", workspace_root);
 
+        // If a previous app session was force-killed and its backend is
+        // still holding port 8765, politely ask it to exit before we try
+        // to bind. Keeps the new session from failing with "address in
+        // use" errors.
+        evict_stale_backend();
+
+        let parent_pid = std::process::id();
         let mut command = Command::new("uv");
         command
             .arg("run")
             .arg("applyslave-backend")
             .arg("--port")
             .arg(BACKEND_PORT.to_string())
+            .arg("--parent-pid")
+            .arg(parent_pid.to_string())
             .current_dir(&workspace_root)
             // Inherit stdio so developers see backend logs while iterating.
             // In packaged builds we'll redirect these to a file.
@@ -156,6 +166,42 @@ fn wait_for_health() -> Result<(), String> {
         "Backend did not start within {}s on port {}",
         HEALTH_DEADLINE_SECS, BACKEND_PORT
     ))
+}
+
+/// Best-effort: if a previous session's backend is still bound to our port,
+/// ask it to exit before we try to bring up a new one. We ignore errors —
+/// if nothing's bound we just continue, and if something else unrelated is
+/// on the port the spawn step will surface the real "address in use" error.
+fn evict_stale_backend() {
+    let addr = format!("127.0.0.1:{}", BACKEND_PORT);
+    let Ok(socket_addr) = addr.parse() else {
+        return;
+    };
+    let Ok(mut stream) =
+        TcpStream::connect_timeout(&socket_addr, Duration::from_millis(200))
+    else {
+        return;
+    };
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+
+    // The backend exposes POST /api/system/shutdown for graceful exit. If
+    // that route isn't there (older build), the connection will just time
+    // out and we fall through.
+    let request = format!(
+        "POST /api/system/shutdown HTTP/1.1\r\n\
+         Host: 127.0.0.1:{}\r\n\
+         Connection: close\r\n\
+         Content-Length: 0\r\n\r\n",
+        BACKEND_PORT
+    );
+    let _ = stream.write_all(request.as_bytes());
+    let mut buf = [0u8; 64];
+    let _ = stream.read(&mut buf);
+
+    // Give it a moment to actually release the port
+    thread::sleep(Duration::from_millis(400));
+    log::info!("Evicted stale backend on port {}", BACKEND_PORT);
 }
 
 // --- libc extern bindings (avoid a full libc crate dep for just 2 calls) ---

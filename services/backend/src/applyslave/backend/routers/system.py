@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Request, status
@@ -78,6 +80,27 @@ async def model_status(request: Request) -> ModelStatusResponse:
         downloading=bool(state.get("in_progress")),
         model_name=manager.model_name,
     )
+
+
+@router.post(
+    "/system/shutdown",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def shutdown() -> dict:
+    """Exit this backend process cleanly.
+
+    The Tauri shell calls this before spawning a new backend so any
+    leftover process from a previous (possibly force-killed) session
+    releases port 8765 before we try to bind.
+    """
+
+    async def _self_kill() -> None:
+        # Small delay so the HTTP response flushes before we die.
+        await asyncio.sleep(0.2)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    asyncio.create_task(_self_kill())
+    return {"status": "shutting_down"}
 
 
 async def _run_download(
