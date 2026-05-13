@@ -1,48 +1,128 @@
 # Seed list of companies hiring publicly through each ATS.
-# Edit this file to change which companies get crawled.
+# Auto-verified by scripts/expand_companies.py — every slug here
+# responded 200 with a jobs array at build time.
 #
 # Company slug = the path segment in the company's career page URL
 # (e.g. boards.greenhouse.io/stripe → slug is "stripe").
 
 greenhouse:
-  - airbnb
-  - stripe
-  - figma
-  - databricks
-  - anthropic
-  - dropbox
-  - doordash
-  - instacart
-  - coinbase
-  - opendoor
-  - robinhood
-  - plaid
-  - affirm
-  - elastic
-  - confluent
-
+- affirm
+- airbnb
+- airtable
+- amplitude
+- anthropic
+- asana
+- betterment
+- block
+- brex
+- carta
+- chime
+- circleci
+- cloudflare
+- coursera
+- databricks
+- datadog
+- discord
+- dropbox
+- duolingo
+- earnin
+- elastic
+- epicgames
+- fastly
+- figma
+- gitlab
+- gusto
+- hellofresh
+- instacart
+- intercom
+- klaviyo
+- lyft
+- marqeta
+- masterclass
+- medium
+- mercari
+- mercury
+- mixpanel
+- mongodb
+- nextdoor
+- offerup
+- okta
+- opendoor
+- picsart
+- pinterest
+- postman
+- public
+- pushpay
+- reddit
+- robinhood
+- roblox
+- samsara
+- scaleai
+- smartsheet
+- sofi
+- stripe
+- tailscale
+- temporal
+- toast
+- twilio
+- twitch
+- unity3d
+- waymo
 lever:
-  - netflix
-  - ramp
-  - brex
-  - mixpanel
-  - alchemy
-  - spotify
-  - shopify
-  - palantir
-  - fivetran
-  - ironclad
-
+- anchorage
+- attentive
+- jumpcloud
+- kraken
+- netflix
+- palantir
+- payjoy
+- spotify
 ashby:
-  - posthog
-  - supabase
-  - vercel
-  - linear
-  - replicate
-  - hex
-  - clerk
-
+- baseten
+- betterup
+- clerk
+- crusoe
+- cursor
+- incident
+- langchain
+- linear
+- lovable
+- modal
+- mux
+- openai
+- poolside
+- posthog
+- railway
+- ramp
+- raycast
+- readme
+- resend
+- sentry
+- stytch
+- supabase
+- vercel
+- warp
+- weaviate
 workable:
-  - aircall
-  - stampli
-  - huspy
+- agorapulse
+- aircall
+- algolia
+- bolt
+- buffer
+- deel
+- hotjar
+- huspy
+- loom
+- mindtickle
+- personio
+- plaid
+- productboard
+- revolut
+- rippling
+- sumup
+- teleport
+- tide
+- trustpilot
+- typeform
+- wise
+- yousign
