@@ -1,13 +1,19 @@
-"""Expand companies.yaml by probing public ATS APIs for known candidates.
+"""Build companies.yaml by harvesting public job-list repos and validating
+every slug against its ATS public API.
 
-We never trust a slug until the ATS's public board endpoint returns 2xx with
-at least one job (or an empty array, which is still a valid board). Keeps the
-yaml honest: every entry in it actually works.
+Trust nothing. Every slug we write to yaml has been HTTP-verified at build
+time. Stale entries get pruned every run because we rewrite the yaml from
+scratch.
 
-Candidate pool is intentionally large — it includes:
-  * Seattle / Bellevue-area tech (primary target for the user)
-  * General US tech (SaaS, fintech, AI, consumer, dev tools)
-  * Remote-first companies
+Sources:
+  * SimplifyJobs / pittcsc internship & new-grad repos (active community
+    maintained markdowns linking to ATS apply URLs)
+  * Our own existing yaml (so previously-verified slugs survive even if
+    the upstream repos drop them)
+  * A small hand-curated seed list for Seattle / Bellevue heavy hitters
+
+The repos give us hundreds of public ATS URLs. We regex-extract the slug
+piece, dedupe, and probe each one's public board endpoint concurrently.
 
 Run: python scripts/expand_companies.py
 """
@@ -15,6 +21,7 @@ Run: python scripts/expand_companies.py
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from pathlib import Path
 
@@ -34,129 +41,81 @@ YAML_PATH = (
 )
 
 
-# --- Candidate pool ---------------------------------------------------------
-#
-# Slugs are lowercased, no spaces. When a company is known under multiple
-# slugs (eg. parent + subsidiary), include both; the verifier will keep
-# whichever answer. Never include a slug we're not at least 70% confident
-# about — verifier will prune the rest.
+# --- Slug harvesters ---------------------------------------------------------
 
-
-GREENHOUSE_CANDIDATES = [
-    # Existing
-    "airbnb", "stripe", "figma", "databricks", "anthropic", "dropbox",
-    "doordash", "instacart", "coinbase", "opendoor", "robinhood", "plaid",
-    "affirm", "elastic", "confluent",
-    # Seattle / Bellevue area
-    "smartsheet", "zillow", "expedia", "redfin", "outreach", "remitly",
-    "convoy", "auth0", "rover", "segment", "tableau", "pointinside",
-    "highspot", "offerup", "icertis", "extrahop", "picsart", "qumulo",
-    "apptio", "pushpay", "mavenlink", "accolade", "bsquare",
-    # Big SV tech on greenhouse
-    "pinterest", "reddit", "lyft", "twitch", "gitlab", "hashicorp",
-    "cloudflare", "airtable", "asana", "notion", "discord", "retool",
-    "vanta", "ramp", "mercury", "mixpanel", "amplitude", "segment",
-    "postman", "twilio", "intercom", "zendesk", "fastly", "datadog",
-    "dropboxsign", "wealthfront", "chime", "kraken", "gusto", "carta",
-    "klaviyo", "toast", "samsara", "stord", "mercari", "nextdoor",
-    "grammarly", "quora", "duolingo", "masterclass", "coursera",
-    "unity3d", "unity", "epicgames", "niantic", "roblox",
-    # AI
-    "openai", "huggingface", "runwayml", "mistralai", "scale",
-    "perplexityai", "inflection", "adept", "cohere", "scaleai",
-    # Fintech
-    "betterment", "brex", "ramp", "atomicfinancial", "acorns",
-    "public", "moneylion", "sofi", "marqeta", "block", "square",
-    # Dev tools / infra
-    "stytch", "workos", "knockdotcom", "render", "fly", "doppler",
-    "railway", "warpdotdev", "bun", "sentry", "circleci", "snyk",
-    "tailscale", "temporal", "terraform", "pulumi",
-    # Consumer
-    "spotifyshop", "etsy", "doordashmerchant", "postmates",
-    # Workplace / collaboration
-    "box", "atlassian", "miro", "loom",
-    # Gaming / creative
-    "unity",
-    # Media
-    "medium", "substack", "reddit",
-    # Extras verified via probe
-    "hellofresh", "waymo", "mongodb", "earnin", "okta",
+# Public markdown lists. Order matters only for logging; we dedupe after.
+HARVEST_SOURCES = [
+    "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README.md",
+    "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README-Off-Season.md",
+    "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md",
+    "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/main/README.md",
+    "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README.md",
+    "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README-Off-Season.md",
+    "https://raw.githubusercontent.com/coderQuad/New-Grad-Positions-2024/main/README.md",
 ]
 
 
-LEVER_CANDIDATES = [
-    # Existing
-    "netflix", "ramp", "brex", "mixpanel", "alchemy", "spotify",
-    "shopify", "palantir", "fivetran", "ironclad",
-    # SV tech
-    "quora", "discord", "faire", "opendoor",
-    "github", "hopin", "jumpcloud", "tripadvisor", "attentive",
-    "lob", "stockx", "vectra", "sigmacomputing", "anduril",
-    "signifyhealth", "circle", "checkr", "addepar", "webflow",
-    "cresta", "matterport", "ironclad",
-    # Seattle
-    "sessionai",
-    # Fintech / crypto
-    "kraken", "anchorage", "figure", "ondeck", "payjoy",
-    # Dev tools
-    "growthbook", "launchdarkly", "segmenthq", "vanta", "mixpanel",
-    "vercel",
-    # Health
-    "oscar", "cedar", "olive", "gethealthy",
-    # Media / consumer
-    "stashinvest", "betterment", "thrivemarket",
-]
+# URL → slug regexes for each ATS. We accept several known URL shapes per
+# vendor because community repos format links inconsistently.
+ATS_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    "greenhouse": [
+        re.compile(r"https?://boards\.greenhouse\.io/([a-zA-Z0-9_-]+)"),
+        re.compile(r"https?://boards\.greenhouse\.io/embed/job_app\?token=[^&]+&for=([a-zA-Z0-9_-]+)"),
+        re.compile(r"https?://boards-api\.greenhouse\.io/v1/boards/([a-zA-Z0-9_-]+)"),
+        re.compile(r"https?://(?:job-boards\.greenhouse\.io)/([a-zA-Z0-9_-]+)"),
+        re.compile(r"https?://boards\.eu\.greenhouse\.io/([a-zA-Z0-9_-]+)"),
+    ],
+    "lever": [
+        re.compile(r"https?://jobs\.lever\.co/([a-zA-Z0-9_-]+)"),
+        re.compile(r"https?://api\.lever\.co/v0/postings/([a-zA-Z0-9_-]+)"),
+    ],
+    "ashby": [
+        re.compile(r"https?://jobs\.ashbyhq\.com/([a-zA-Z0-9_.-]+)"),
+        re.compile(r"https?://(?:www\.)?ashbyhq\.com/([a-zA-Z0-9_.-]+)/jobs"),
+        re.compile(r"https?://api\.ashbyhq\.com/posting-api/job-board/([a-zA-Z0-9_.-]+)"),
+    ],
+    "workable": [
+        re.compile(r"https?://apply\.workable\.com/([a-zA-Z0-9_-]+)/"),
+        re.compile(r"https?://([a-zA-Z0-9_-]+)\.workable\.com/"),
+    ],
+}
 
 
-ASHBY_CANDIDATES = [
-    # Existing
-    "posthog", "supabase", "vercel", "linear", "replicate", "hex", "clerk",
-    # Known Ashby users
-    "openai", "ramp", "hexops", "mux", "neondatabase", "prisma",
-    "railway", "trigger", "turso", "resend", "supabaseinc",
-    "incident", "monite", "metabase", "readme", "modal",
-    "crusoe", "weaviate", "stytch", "inflectionai",
-    "raycast", "contrary", "warp", "paragraph", "sentry",
-    "linearapp", "betterup", "poolside", "anthropic", "togetherai",
-    "groqinc", "fal", "langchain", "arizeai", "wandb",
-    "crewai", "lovable", "cursor", "codeium", "windsurf",
-    "baseten", "patternai", "chroma", "pineconeinc",
-]
+# Slug fragments that are obviously not company slugs (URL fragments, common
+# typos, repo-internal anchors). We reject these post-extract.
+SLUG_BLOCKLIST = {
+    "j", "jobs", "embed", "boards", "api", "v1", "posting-api", "search",
+    "job", "post", "redirect", "login", "signin", "signup", "explore",
+    "app",
+}
 
 
-WORKABLE_CANDIDATES = [
-    # Existing
-    "aircall", "stampli", "huspy",
-    "rippling", "loom", "typeform", "deel",
-    # SMB / EU
-    "hotjar", "remotecom", "pipedrive", "revolut",
-    "personio", "plaid", "mindtickle", "trustpilot",
-    "bolt", "algolia", "contentful", "yousign", "amplemarket",
-    "productboard", "wise", "tide", "bunq", "hostelworld",
-    "gitpod", "teleport", "mews", "lokalise", "spendesk",
-    "agorapulse", "buffer", "sumup",
-]
+def looks_like_slug(slug: str) -> bool:
+    if not slug or slug.lower() in SLUG_BLOCKLIST:
+        return False
+    if len(slug) < 2 or len(slug) > 64:
+        return False
+    return True
 
 
-# Dedup before probing
-def _dedup(items: list[str]) -> list[str]:
-    seen = set()
-    out = []
-    for item in items:
-        low = item.lower().strip()
-        if low and low not in seen:
-            seen.add(low)
-            out.append(low)
-    return out
+def extract_from_text(text: str) -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {ats: set() for ats in ATS_PATTERNS}
+    for ats, patterns in ATS_PATTERNS.items():
+        for pattern in patterns:
+            for match in pattern.finditer(text):
+                slug = match.group(1).lower()
+                if looks_like_slug(slug):
+                    found[ats].add(slug)
+    return found
 
 
-# --- Probers ---------------------------------------------------------------
+# --- Probers (one per ATS) --------------------------------------------------
 
 
 async def probe_greenhouse(client: httpx.AsyncClient, slug: str) -> bool:
     url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
     try:
-        response = await client.get(url, timeout=8.0)
+        response = await client.get(url, timeout=10.0)
     except httpx.HTTPError:
         return False
     if response.status_code != 200:
@@ -171,7 +130,7 @@ async def probe_greenhouse(client: httpx.AsyncClient, slug: str) -> bool:
 async def probe_lever(client: httpx.AsyncClient, slug: str) -> bool:
     url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
     try:
-        response = await client.get(url, timeout=8.0)
+        response = await client.get(url, timeout=10.0)
     except httpx.HTTPError:
         return False
     if response.status_code != 200:
@@ -186,7 +145,7 @@ async def probe_lever(client: httpx.AsyncClient, slug: str) -> bool:
 async def probe_ashby(client: httpx.AsyncClient, slug: str) -> bool:
     url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
     try:
-        response = await client.get(url, timeout=8.0)
+        response = await client.get(url, timeout=10.0)
     except httpx.HTTPError:
         return False
     if response.status_code != 200:
@@ -204,7 +163,7 @@ async def probe_workable(client: httpx.AsyncClient, slug: str) -> bool:
         response = await client.post(
             url,
             json={"query": "", "location": []},
-            timeout=8.0,
+            timeout=10.0,
         )
     except httpx.HTTPError:
         return False
@@ -225,64 +184,65 @@ PROBERS = {
 }
 
 
-# --- Main ---
+# --- Pipeline ---------------------------------------------------------------
 
-async def verify_batch(
-    client: httpx.AsyncClient,
-    ats: str,
-    candidates: list[str],
+
+async def harvest_slugs(client: httpx.AsyncClient) -> dict[str, set[str]]:
+    aggregate: dict[str, set[str]] = {ats: set() for ats in ATS_PATTERNS}
+    for url in HARVEST_SOURCES:
+        try:
+            response = await client.get(url, timeout=15.0)
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            print(f"  [warn] could not fetch {url}: {error}")
+            continue
+        found = extract_from_text(response.text)
+        for ats, slugs in found.items():
+            aggregate[ats].update(slugs)
+        total = sum(len(slugs) for slugs in found.values())
+        print(f"  {url.split('/')[-1]:<35} +{total} slugs")
+    return aggregate
+
+
+def merge_existing(harvested: dict[str, set[str]]) -> dict[str, set[str]]:
+    """Union the harvested set with whatever is already in companies.yaml.
+
+    Treats the existing yaml as a trusted seed: yes, we'll re-probe it (so
+    stale entries fall out), but we don't lose hand-curated slugs that
+    weren't in any harvest source.
+    """
+    if not YAML_PATH.exists():
+        return harvested
+    existing = yaml.safe_load(YAML_PATH.read_text(encoding="utf-8")) or {}
+    merged = {ats: set(slugs) for ats, slugs in harvested.items()}
+    for ats, slugs in existing.items():
+        if ats in merged and isinstance(slugs, list):
+            merged[ats].update(slug.lower() for slug in slugs)
+    return merged
+
+
+async def verify_pool(
+    client: httpx.AsyncClient, ats: str, candidates: set[str]
 ) -> tuple[list[str], list[str]]:
     probe = PROBERS[ats]
-    semaphore = asyncio.Semaphore(20)
+    semaphore = asyncio.Semaphore(40)
 
     async def _check(slug: str) -> tuple[str, bool]:
         async with semaphore:
             ok = await probe(client, slug)
         return slug, ok
 
-    results = await asyncio.gather(*(_check(c) for c in candidates))
+    results = await asyncio.gather(*(_check(slug) for slug in candidates))
     good = sorted({slug for slug, ok in results if ok})
     bad = sorted({slug for slug, ok in results if not ok})
     return good, bad
 
 
-async def main() -> int:
-    pools = {
-        "greenhouse": _dedup(GREENHOUSE_CANDIDATES),
-        "lever": _dedup(LEVER_CANDIDATES),
-        "ashby": _dedup(ASHBY_CANDIDATES),
-        "workable": _dedup(WORKABLE_CANDIDATES),
+def write_yaml(verified: dict[str, list[str]]) -> None:
+    ordered = {
+        ats: verified.get(ats, [])
+        for ats in ("greenhouse", "lever", "ashby", "workable")
     }
-
-    verified: dict[str, list[str]] = {}
-    rejected: dict[str, list[str]] = {}
-
-    async with httpx.AsyncClient(
-        headers={"User-Agent": "applyslave-expand/1.0"},
-        follow_redirects=True,
-    ) as client:
-        for ats, candidates in pools.items():
-            print(f"[{ats}] probing {len(candidates)} candidates…")
-            good, bad = await verify_batch(client, ats, candidates)
-            verified[ats] = good
-            rejected[ats] = bad
-            print(f"[{ats}]   {len(good)} verified, {len(bad)} rejected")
-
-    total = sum(len(v) for v in verified.values())
-    print(f"\nTotal verified slugs: {total}")
-
-    _write_yaml(verified)
-
-    print(f"\nWrote {YAML_PATH.relative_to(REPO_ROOT)}")
-    print("\nRejected slugs (for reference):")
-    for ats, slugs in rejected.items():
-        for slug in slugs:
-            print(f"  {ats:<11} {slug}")
-    return 0
-
-
-def _write_yaml(verified: dict[str, list[str]]) -> None:
-    ordered = {ats: verified.get(ats, []) for ats in ("greenhouse", "lever", "ashby", "workable")}
     header = (
         "# Seed list of companies hiring publicly through each ATS.\n"
         "# Auto-verified by scripts/expand_companies.py — every slug here\n"
@@ -293,6 +253,32 @@ def _write_yaml(verified: dict[str, list[str]]) -> None:
     )
     body = yaml.safe_dump(ordered, sort_keys=False, default_flow_style=False)
     YAML_PATH.write_text(header + body)
+
+
+async def main() -> int:
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "applyslave-expand/1.1"},
+        follow_redirects=True,
+    ) as client:
+        print("Harvesting slugs from public sources…")
+        harvested = await harvest_slugs(client)
+        candidates = merge_existing(harvested)
+        for ats, slugs in candidates.items():
+            print(f"  {ats:<11} {len(slugs)} candidates after merge")
+
+        verified: dict[str, list[str]] = {}
+        rejected: dict[str, list[str]] = {}
+        for ats in ("greenhouse", "lever", "ashby", "workable"):
+            print(f"\n[{ats}] probing {len(candidates[ats])} slugs concurrently…")
+            good, bad = await verify_pool(client, ats, candidates[ats])
+            verified[ats] = good
+            rejected[ats] = bad
+            print(f"[{ats}]   {len(good)} verified, {len(bad)} rejected")
+
+    total = sum(len(v) for v in verified.values())
+    write_yaml(verified)
+    print(f"\nWrote {YAML_PATH.relative_to(REPO_ROOT)}: {total} verified slugs")
+    return 0
 
 
 if __name__ == "__main__":
