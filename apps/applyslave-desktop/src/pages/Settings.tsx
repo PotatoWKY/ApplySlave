@@ -153,6 +153,15 @@ function ModelSection() {
               {deleteMutation.isPending ? "Deleting…" : "Delete model"}
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => statusQuery.refetch()}
+            disabled={statusQuery.isFetching}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {statusQuery.isFetching ? "Checking…" : "Check status"}
+          </button>
         </div>
 
         {deleteMutation.isError && (
@@ -168,8 +177,13 @@ function ModelSection() {
         )}
       </div>
 
-      <div className="mt-4 text-xs text-slate-400">
-        Model stored at ~/Library/Application Support/ApplySlave/models/
+      <div className="mt-4 flex items-center gap-3 text-xs text-slate-400">
+        <span>Model stored at ~/Library/Application Support/ApplySlave/models/</span>
+        {statusQuery.dataUpdatedAt > 0 && (
+          <span className="ml-auto">
+            Last checked: {new Date(statusQuery.dataUpdatedAt).toLocaleTimeString()}
+          </span>
+        )}
       </div>
     </section>
   );
