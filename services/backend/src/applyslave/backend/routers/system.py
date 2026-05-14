@@ -83,12 +83,41 @@ async def model_status(request: Request) -> ModelStatusResponse:
 
 
 @router.delete("/model", status_code=status.HTTP_200_OK)
-async def delete_model() -> dict:
-    """Delete the downloaded model file to free disk space (~2.3GB)."""
+async def delete_model(request: Request) -> dict:
+    """Delete the downloaded model file to free disk space (~2.3GB).
+
+    Also invalidates the cached LLM client in the profile router so the
+    next resume upload will see the model as missing instead of trying
+    to use a now-dangling mmap.
+    """
     manager = _model_manager()
+    state = request.app.state.model_download_state
+    if state.get("in_progress"):
+        return {
+            "deleted": False,
+            "reason": "model is currently downloading; wait for it to finish "
+            "or restart the app",
+        }
     if not manager.is_installed():
+        # Still clean up any leftover .part file from an aborted download.
+        partial = manager.model_path.with_suffix(".gguf.part")
+        if partial.exists():
+            partial.unlink()
+            return {"deleted": True, "removed_partial": True}
         return {"deleted": False, "reason": "model not installed"}
+
+    # Drop the cached client first so any in-flight references release
+    # their mmap before we unlink the file. Done by reaching into the
+    # profile router's module global — keeps the wiring obvious.
+    from applyslave.backend.routers import profile as profile_router
+
+    profile_router._CACHED_LLM_CLIENT = None
+
     manager.model_path.unlink()
+    # Also clean up any partial download artifacts
+    partial = manager.model_path.with_suffix(".gguf.part")
+    if partial.exists():
+        partial.unlink()
     logger.info("Deleted model at %s", manager.model_path)
     return {"deleted": True, "path": str(manager.model_path)}
 
