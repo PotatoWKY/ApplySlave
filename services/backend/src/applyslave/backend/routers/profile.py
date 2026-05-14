@@ -34,12 +34,21 @@ async def _get_llm_client_or_none() -> LLMClient | None:
     """Return a loaded LLM client if the model is installed, else None.
 
     Cached module-global so the model stays loaded across requests. The
-    first upload still pays ~10s for Metal shader compilation; subsequent
-    uploads in the same backend session return in ~5-7s on an M3 Pro.
+    first upload still pays ~30s for Metal shader compilation; subsequent
+    uploads in the same backend session return in ~90s (inference time).
+
+    If the model was deleted (cache set to None by the delete endpoint),
+    we re-check disk before trying to recreate the client.
     """
     global _CACHED_LLM_CLIENT  # noqa: PLW0603
 
     if _CACHED_LLM_CLIENT is not None:
+        # Verify the model file still exists (could have been deleted
+        # between requests). If gone, drop the stale cache.
+        manager = ModelManager(data_dir=get_data_dir())
+        if not manager.is_installed():
+            _CACHED_LLM_CLIENT = None
+            return None
         return _CACHED_LLM_CLIENT
 
     manager = ModelManager(data_dir=get_data_dir())

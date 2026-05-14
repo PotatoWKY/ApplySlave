@@ -51,6 +51,18 @@ class LLMClient:
             verbose=self._verbose,
         )
 
+    def close(self) -> None:
+        """Explicitly release the model from memory.
+
+        After calling close(), the client is no longer usable. Create a
+        new LLMClient instance to reload the model.
+        """
+        if self._llama is not None:
+            logger.info("Releasing LLM model from memory")
+            # llama-cpp-python's Llama.__del__ calls llama_free which
+            # unmaps the model file and frees GPU buffers.
+            self._llama = None
+
     async def chat_json(
         self, prompt: str, schema: dict | None = None
     ) -> dict:

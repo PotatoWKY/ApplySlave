@@ -111,7 +111,18 @@ async def delete_model(request: Request) -> dict:
     # profile router's module global — keeps the wiring obvious.
     from applyslave.backend.routers import profile as profile_router
 
+    old_client = profile_router._CACHED_LLM_CLIENT
     profile_router._CACHED_LLM_CLIENT = None
+
+    # Explicitly close the Llama instance to release the mmap'd memory
+    # (~2.3GB) immediately rather than waiting for GC. llama-cpp-python's
+    # Llama object holds a ctypes pointer to the C++ model; setting
+    # _llama to None drops the only reference and triggers __del__ which
+    # calls llama_free. We also del the client to break any ref cycles.
+    if old_client is not None:
+        if hasattr(old_client, "close"):
+            old_client.close()
+        del old_client
 
     manager.model_path.unlink()
     # Also clean up any partial download artifacts
