@@ -74,6 +74,8 @@ export const backendClient = {
     }),
 
   getProfile: () => request<UserProfile | null>("/api/profile"),
+  getSuggestedSearches: () =>
+    request<{ suggestions: string[] }>("/api/profile/suggested-searches"),
   saveProfile: (profile: UserProfile) =>
     request<UserProfile>("/api/profile", {
       method: "POST",

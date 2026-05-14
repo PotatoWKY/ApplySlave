@@ -54,6 +54,7 @@ export interface JobListing {
   description_snippet?: string | null;
   posted_at?: string | null;
   remote: boolean;
+  relevance_score?: number;
 }
 
 export type ApplicationStatus =

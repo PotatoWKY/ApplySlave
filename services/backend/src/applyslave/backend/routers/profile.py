@@ -72,6 +72,67 @@ async def read_profile(
     return store.load_profile()
 
 
+@router.get("/suggested-searches")
+async def suggested_searches(
+    store: Annotated[ProfileStore, Depends(get_profile_store)],
+) -> dict:
+    """Generate search keyword suggestions based on the user's profile.
+
+    Uses simple heuristics (not LLM) to extract job titles from experience
+    and common role variants. Fast enough to call on page load.
+    """
+    profile = store.load_profile()
+    if not profile or not profile.experience:
+        return {"suggestions": ["software engineer", "developer", "analyst"]}
+
+    suggestions: list[str] = []
+    seen: set[str] = set()
+
+    for experience in profile.experience:
+        title = experience.title.strip()
+        if title and title.lower() not in seen:
+            suggestions.append(title)
+            seen.add(title.lower())
+
+    # Add common variants based on the most recent title
+    if suggestions:
+        recent = suggestions[0].lower()
+        variants = _generate_variants(recent)
+        for variant in variants:
+            if variant.lower() not in seen:
+                suggestions.append(variant)
+                seen.add(variant.lower())
+
+    return {"suggestions": suggestions[:8]}
+
+
+def _generate_variants(title: str) -> list[str]:
+    """Generate common search variants from a job title."""
+    variants: list[str] = []
+    title_lower = title.lower()
+
+    # Level variants
+    for prefix in ("senior ", "sr. ", "sr ", "junior ", "jr. ", "jr ", "lead ", "staff ", "principal "):
+        if title_lower.startswith(prefix):
+            base = title[len(prefix):]
+            variants.append(base)
+            break
+    else:
+        variants.append(f"Senior {title}")
+
+    # Domain variants
+    if "full stack" in title_lower or "fullstack" in title_lower:
+        variants.extend(["Backend Developer", "Frontend Developer"])
+    elif "backend" in title_lower:
+        variants.append("Full Stack Developer")
+    elif "frontend" in title_lower or "front-end" in title_lower:
+        variants.append("Full Stack Developer")
+    elif "software" in title_lower and "engineer" in title_lower:
+        variants.extend(["Backend Engineer", "Full Stack Engineer"])
+
+    return variants
+
+
 @router.post("", response_model=UserProfile)
 async def save_profile(
     profile: UserProfile,

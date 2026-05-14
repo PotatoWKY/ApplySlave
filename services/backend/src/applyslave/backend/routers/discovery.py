@@ -16,9 +16,11 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
-from applyslave.backend.dependencies import get_jsearch_api_key, get_result_logger
+from applyslave.backend.dependencies import get_jsearch_api_key, get_profile_store, get_result_logger
 from applyslave.job_discovery import build_default_aggregator
+from applyslave.job_discovery.relevance import score_job
 from applyslave.orchestrator import ResultLogger
+from applyslave.profile_store import ProfileStore
 from applyslave.shared import JobListing, SearchQuery
 
 logger = logging.getLogger(__name__)
@@ -76,22 +78,35 @@ async def start_discovery(
     return DiscoverResponse(task_id=task_id, status="queued")
 
 
-@router.get("/discover/{task_id}", response_model=DiscoveryTaskDetail)
+@router.get("/discover/{task_id}")
 async def get_discovery_task(
     task_id: str,
     result_logger: Annotated[ResultLogger, Depends(get_result_logger)],
-) -> DiscoveryTaskDetail:
+    profile_store: Annotated[ProfileStore, Depends(get_profile_store)],
+) -> dict:
     raw = result_logger.load_discovery_task(task_id)
     if raw is None:
         raise HTTPException(status_code=404, detail=f"Unknown task: {task_id}")
+
     results = None
     if raw.get("results"):
-        results = [JobListing.model_validate(item) for item in raw["results"]]
-    return DiscoveryTaskDetail(
-        task_id=raw["id"],
-        status=raw["status"],
-        results=results,
-    )
+        jobs = [JobListing.model_validate(item) for item in raw["results"]]
+        profile = profile_store.load_profile()
+
+        results = []
+        for job in jobs:
+            job_dict = job.model_dump(mode="json")
+            if profile:
+                job_dict["relevance_score"] = score_job(job, profile)
+            else:
+                job_dict["relevance_score"] = 50
+            results.append(job_dict)
+
+    return {
+        "task_id": raw["id"],
+        "status": raw["status"],
+        "results": results,
+    }
 
 
 async def _run_discovery(
