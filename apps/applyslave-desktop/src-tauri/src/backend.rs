@@ -41,19 +41,33 @@ impl PythonBackend {
         evict_stale_backend();
 
         let parent_pid = std::process::id();
-        let mut command = Command::new("uv");
-        command
-            .arg("run")
-            .arg("applyslave-backend")
-            .arg("--port")
-            .arg(BACKEND_PORT.to_string())
-            .arg("--parent-pid")
-            .arg(parent_pid.to_string())
-            .current_dir(&workspace_root)
-            // Inherit stdio so developers see backend logs while iterating.
-            // In packaged builds we'll redirect these to a file.
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
+
+        // In dev mode (debug builds) we use `uv run` from the workspace.
+        // In release builds we use the bundled sidecar binary.
+        let mut command = if cfg!(debug_assertions) {
+            let mut cmd = Command::new("uv");
+            cmd.arg("run")
+                .arg("applyslave-backend")
+                .arg("--port")
+                .arg(BACKEND_PORT.to_string())
+                .arg("--parent-pid")
+                .arg(parent_pid.to_string())
+                .current_dir(&workspace_root);
+            cmd
+        } else {
+            let sidecar_path = sidecar_binary_path();
+            log::info!("Using sidecar binary at {:?}", sidecar_path);
+            let mut cmd = Command::new(&sidecar_path);
+            cmd.arg("--port")
+                .arg(BACKEND_PORT.to_string())
+                .arg("--parent-pid")
+                .arg(parent_pid.to_string());
+            cmd
+        };
+
+        // Inherit stdio so developers see backend logs while iterating.
+        // In packaged builds these go to Console.app via stdout/stderr.
+        command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
 
         // Put the child in its own process group so `kill -- -pid` takes
         // down the whole tree (uv + its Python child). Without this, killing
@@ -138,6 +152,33 @@ fn workspace_root() -> PathBuf {
         .and_then(|p| p.parent())
         .map(PathBuf::from)
         .expect("CARGO_MANIFEST_DIR should have at least 3 parents")
+}
+
+/// In release builds, the sidecar binary lives next to the main executable
+/// (Tauri places externalBin contents in the same directory as the app binary
+/// on macOS, or in the Resources dir inside the .app bundle).
+fn sidecar_binary_path() -> PathBuf {
+    let exe = std::env::current_exe().expect("cannot determine own exe path");
+    let exe_dir = exe.parent().expect("exe has no parent dir");
+
+    // Tauri on macOS puts sidecars in Contents/MacOS/ alongside the main binary
+    let candidate = exe_dir.join("applyslave-backend");
+    if candidate.exists() {
+        return candidate;
+    }
+
+    // Fallback: check Resources/ (some Tauri versions)
+    let resources = exe_dir
+        .parent()
+        .map(|p| p.join("Resources").join("applyslave-backend"));
+    if let Some(ref path) = resources {
+        if path.exists() {
+            return path.clone();
+        }
+    }
+
+    // Last resort: assume it's in the same dir (dev-like layout)
+    candidate
 }
 
 /// Wait until the backend accepts a TCP connection on the health port.
