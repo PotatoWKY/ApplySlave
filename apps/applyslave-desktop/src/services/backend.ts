@@ -60,6 +60,10 @@ export const backendClient = {
     request<{ task_id: string }>("/api/model/download", {
       method: "POST",
     }),
+  deleteModel: () =>
+    request<{ deleted: boolean; reason?: string; path?: string }>("/api/model", {
+      method: "DELETE",
+    }),
 
   getProfile: () => request<UserProfile | null>("/api/profile"),
   saveProfile: (profile: UserProfile) =>

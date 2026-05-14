@@ -4,6 +4,7 @@ import { NavLink, Navigate, Route, BrowserRouter, Routes } from "react-router-do
 import { ApplicationsPage } from "./pages/Applications";
 import { DiscoveryPage } from "./pages/Discovery";
 import { ProfilePage } from "./pages/Profile";
+import { SettingsPage } from "./pages/Settings";
 import { backendClient } from "./services/backend";
 import type { UserProfile } from "./types/api";
 
@@ -60,6 +61,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <NavItem to="/profile">Profile</NavItem>
           <NavItem to="/discover">Discover jobs</NavItem>
           <NavItem to="/applications">Applications</NavItem>
+          <NavItem to="/settings">Settings</NavItem>
         </nav>
       </aside>
       <main className="flex-1">
@@ -122,6 +124,7 @@ export default function App() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/discover" element={<DiscoveryPage />} />
           <Route path="/applications" element={<ApplicationsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Shell>
     </BrowserRouter>

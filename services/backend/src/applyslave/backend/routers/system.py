@@ -82,6 +82,17 @@ async def model_status(request: Request) -> ModelStatusResponse:
     )
 
 
+@router.delete("/model", status_code=status.HTTP_200_OK)
+async def delete_model() -> dict:
+    """Delete the downloaded model file to free disk space (~2.3GB)."""
+    manager = _model_manager()
+    if not manager.is_installed():
+        return {"deleted": False, "reason": "model not installed"}
+    manager.model_path.unlink()
+    logger.info("Deleted model at %s", manager.model_path)
+    return {"deleted": True, "path": str(manager.model_path)}
+
+
 @router.post(
     "/system/shutdown",
     status_code=status.HTTP_202_ACCEPTED,
