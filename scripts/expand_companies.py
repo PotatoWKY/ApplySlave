@@ -45,13 +45,30 @@ YAML_PATH = (
 
 # Public markdown lists. Order matters only for logging; we dedupe after.
 HARVEST_SOURCES = [
+    # SimplifyJobs (community-curated, very active)
+    "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md",
+    "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README-Off-Season.md",
     "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README.md",
     "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README-Off-Season.md",
     "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md",
-    "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/main/README.md",
     "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README.md",
     "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README-Off-Season.md",
-    "https://raw.githubusercontent.com/coderQuad/New-Grad-Positions-2024/main/README.md",
+    # vanshb03 / cvrve (parallel community lists, often have unique slugs)
+    "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/main/README.md",
+    "https://raw.githubusercontent.com/vanshb03/New-Grad-2026/main/README.md",
+    "https://raw.githubusercontent.com/cvrve/Summer2025-Internships/dev/README.md",
+    "https://raw.githubusercontent.com/cvrve/New-Grad-2025/main/README.md",
+    # speedyapply (huge daily-updated lists, USA + INTL + AI)
+    "https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/README.md",
+    "https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/NEW_GRAD_USA.md",
+    "https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/INTERN_INTL.md",
+    "https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/NEW_GRAD_INTL.md",
+    "https://raw.githubusercontent.com/speedyapply/2026-AI-College-Jobs/main/README.md",
+    "https://raw.githubusercontent.com/speedyapply/2025-SWE-College-Jobs/main/README.md",
+    "https://raw.githubusercontent.com/speedyapply/2025-SWE-College-Jobs/main/NEW_GRAD_USA.md",
+    "https://raw.githubusercontent.com/speedyapply/2025-AI-College-Jobs/main/README.md",
+    # zapplyjobs (broader entry-level focus)
+    "https://raw.githubusercontent.com/zapplyjobs/New-Grad-Jobs-2026/main/README.md",
 ]
 
 
