@@ -182,7 +182,34 @@ Download: triggered automatically on first resume upload, or manually via `POST 
 
 ## What's next
 
+- **JSearch integration** (broader job coverage — see below)
 - **Auto-apply pipeline**: wire the Playwright form-filler to actually submit applications
 - **More ATS adapters**: Microsoft/Amazon/Meta careers pages (custom, not public ATS)
-- **Cloud job search API** (optional): JSearch/Adzuna for broader coverage beyond the 603 known companies
 - **Windows/Linux builds**: same architecture, just need PyInstaller cross-compile + different Tauri target triples
+
+## JSearch API setup (for non-tech jobs / broader coverage)
+
+The 603 companies in our local list are mostly tech companies (sourced from SWE job repos). For non-tech roles (financial analyst, marketing, operations) or companies that use Workday/iCIMS/Taleo (banks, Fortune 500, retail), you need JSearch — a wrapper around Google Jobs that covers all job boards and ATS platforms.
+
+**Free tier**: 200 searches/month (plenty for personal use)
+
+### Setup steps
+
+1. Go to: https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+2. Sign up for a RapidAPI account (Google/GitHub login works)
+3. Subscribe to the "Basic" plan (free, 200 requests/month)
+4. Copy your API key from the page (`X-RapidAPI-Key: xxxxxxxx`)
+5. Paste it into the app's Settings page (TODO: not yet implemented in UI)
+
+### What it covers that our local list doesn't
+
+| Our local ATS list (603 companies) | JSearch (Google Jobs aggregation) |
+| --- | --- |
+| Greenhouse, Lever, Ashby, Workable only | All ATS platforms including Workday, iCIMS, Taleo, SuccessFactors |
+| Mostly tech/startup companies | All industries (finance, healthcare, retail, consulting) |
+| Free, unlimited, no API key | Free tier 200/month, needs key |
+| Real-time per-company fetch | Google's crawl (slight delay) |
+
+### Privacy
+
+Only the search query ("financial analyst Seattle") is sent to RapidAPI. Your resume, profile, and application history stay 100% local.
