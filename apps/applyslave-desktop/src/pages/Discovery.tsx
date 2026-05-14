@@ -1,37 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { backendClient } from "../services/backend";
+import {
+  clearSelectedJobs,
+  getDiscoveryState,
+  setDiscoveryState,
+  subscribeDiscoveryState,
+  toggleSelectedJob,
+} from "../state/discovery";
 import type { JobListing } from "../types/api";
 
-type SortMode = "relevance" | "date" | "company";
+function useDiscoveryState() {
+  return useSyncExternalStore(subscribeDiscoveryState, getDiscoveryState);
+}
 
 export function DiscoveryPage() {
   const queryClient = useQueryClient();
-  const [keywords, setKeywords] = useState("");
-  const [location, setLocation] = useState("");
-  const [remoteOnly, setRemoteOnly] = useState(false);
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
-  const [sortMode, setSortMode] = useState<SortMode>("relevance");
+  const {
+    keywords,
+    location,
+    remoteOnly,
+    activeTaskId,
+    selectedJobIds,
+    sortMode,
+  } = useDiscoveryState();
 
   const suggestionsQuery = useQuery({
     queryKey: ["suggested-searches"],
     queryFn: backendClient.getSuggestedSearches,
   });
 
-  // Set default keywords from suggestions on first load
+  // Set default keywords from suggestions on first load (only if empty)
   useEffect(() => {
-    if (suggestionsQuery.data?.suggestions?.length && keywords === "") {
-      setKeywords(suggestionsQuery.data.suggestions[0]);
+    const current = getDiscoveryState();
+    if (
+      suggestionsQuery.data?.suggestions?.length &&
+      current.keywords === ""
+    ) {
+      setDiscoveryState({ keywords: suggestionsQuery.data.suggestions[0] });
     }
-  }, [suggestionsQuery.data, keywords]);
+  }, [suggestionsQuery.data]);
 
   const startMutation = useMutation({
     mutationFn: backendClient.startDiscovery,
     onSuccess: (response) => {
-      setActiveTaskId(response.task_id);
-      setSelectedJobs(new Set());
+      setDiscoveryState({ activeTaskId: response.task_id });
+      clearSelectedJobs();
     },
   });
 
@@ -53,7 +68,7 @@ export function DiscoveryPage() {
     mutationFn: backendClient.submitBatch,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["applications"] });
-      setSelectedJobs(new Set());
+      clearSelectedJobs();
     },
   });
 
@@ -81,16 +96,8 @@ export function DiscoveryPage() {
     return copy;
   }, [rawJobs, sortMode]);
 
-  const toggleJob = (jobId: string) => {
-    setSelectedJobs((previous) => {
-      const next = new Set(previous);
-      next.has(jobId) ? next.delete(jobId) : next.add(jobId);
-      return next;
-    });
-  };
-
   const submitSelected = () => {
-    const selected = sortedJobs.filter((job) => selectedJobs.has(job.id));
+    const selected = sortedJobs.filter((job) => selectedJobIds.has(job.id));
     if (selected.length === 0) return;
     submitMutation.mutate(
       selected.map((job) => ({
@@ -114,7 +121,7 @@ export function DiscoveryPage() {
               <button
                 key={suggestion}
                 type="button"
-                onClick={() => setKeywords(suggestion)}
+                onClick={() => setDiscoveryState({ keywords: suggestion })}
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                   keywords === suggestion
                     ? "border-slate-900 bg-slate-900 text-white"
@@ -129,22 +136,22 @@ export function DiscoveryPage() {
 
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <label className="block sm:col-span-2">
-            <span className="text-sm font-medium text-slate-700">
-              Keywords
-            </span>
+            <span className="text-sm font-medium text-slate-700">Keywords</span>
             <input
               value={keywords}
-              onChange={(event) => setKeywords(event.target.value)}
+              onChange={(event) =>
+                setDiscoveryState({ keywords: event.target.value })
+              }
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
             />
           </label>
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">
-              Location
-            </span>
+            <span className="text-sm font-medium text-slate-700">Location</span>
             <input
               value={location}
-              onChange={(event) => setLocation(event.target.value)}
+              onChange={(event) =>
+                setDiscoveryState({ location: event.target.value })
+              }
               placeholder="Seattle, remote, …"
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
             />
@@ -154,7 +161,9 @@ export function DiscoveryPage() {
           <input
             type="checkbox"
             checked={remoteOnly}
-            onChange={(event) => setRemoteOnly(event.target.checked)}
+            onChange={(event) =>
+              setDiscoveryState({ remoteOnly: event.target.checked })
+            }
           />
           Remote only
         </label>
@@ -181,26 +190,24 @@ export function DiscoveryPage() {
       {activeTaskId && (
         <section className="rounded-md border border-slate-200 bg-white p-6 shadow-sm">
           <header className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-medium">
-                Results
-                {taskQuery.data?.status && (
-                  <span className="ml-2 text-sm font-normal text-slate-500">
-                    ({taskQuery.data.status}
-                    {sortedJobs.length > 0 && ` · ${sortedJobs.length} jobs`})
-                  </span>
-                )}
-              </h2>
-            </div>
+            <h2 className="text-xl font-medium">
+              Results
+              {taskQuery.data?.status && (
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  ({taskQuery.data.status}
+                  {sortedJobs.length > 0 && ` · ${sortedJobs.length} jobs`})
+                </span>
+              )}
+            </h2>
             <button
               type="button"
-              disabled={selectedJobs.size === 0 || submitMutation.isPending}
+              disabled={selectedJobIds.size === 0 || submitMutation.isPending}
               onClick={submitSelected}
               className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50"
             >
               {submitMutation.isPending
                 ? "Queueing…"
-                : `Queue ${selectedJobs.size} selected`}
+                : `Queue ${selectedJobIds.size} selected`}
             </button>
           </header>
 
@@ -209,19 +216,19 @@ export function DiscoveryPage() {
               <span className="text-slate-500">Sort by:</span>
               <SortButton
                 active={sortMode === "relevance"}
-                onClick={() => setSortMode("relevance")}
+                onClick={() => setDiscoveryState({ sortMode: "relevance" })}
               >
                 Relevance
               </SortButton>
               <SortButton
                 active={sortMode === "date"}
-                onClick={() => setSortMode("date")}
+                onClick={() => setDiscoveryState({ sortMode: "date" })}
               >
                 Date posted
               </SortButton>
               <SortButton
                 active={sortMode === "company"}
-                onClick={() => setSortMode("company")}
+                onClick={() => setDiscoveryState({ sortMode: "company" })}
               >
                 Company
               </SortButton>
@@ -233,11 +240,7 @@ export function DiscoveryPage() {
               No jobs matched the query.
             </p>
           ) : (
-            <JobList
-              jobs={sortedJobs}
-              selected={selectedJobs}
-              onToggle={toggleJob}
-            />
+            <JobList jobs={sortedJobs} selected={selectedJobIds} />
           )}
         </section>
       )}
@@ -272,68 +275,146 @@ function SortButton({
 function JobList({
   jobs,
   selected,
-  onToggle,
 }: {
   jobs: JobListing[];
-  selected: Set<string>;
-  onToggle: (id: string) => void;
+  selected: ReadonlySet<string>;
 }) {
   return (
     <ul className="mt-4 divide-y divide-slate-100">
       {jobs.map((job) => (
-        <li key={job.id} className="flex items-start gap-3 py-3">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={selected.has(job.id)}
-            onChange={() => onToggle(job.id)}
-          />
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{job.title}</span>
-              {job.relevance_score != null && (
-                <RelevanceBadge score={job.relevance_score} />
-              )}
-            </div>
-            <div className="text-sm text-slate-600">
-              {job.company}
-              {job.location ? ` · ${job.location}` : ""}
-              {job.remote ? " · Remote" : ""}
-            </div>
-            <div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500">
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline"
-              >
-                Apply →
-              </a>
-              {job.posted_at && (
-                <span>{formatDate(job.posted_at)}</span>
-              )}
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 uppercase tracking-wide">
-                {job.source}
-              </span>
-            </div>
-          </div>
-        </li>
+        <JobRow key={job.id} job={job} selected={selected.has(job.id)} />
       ))}
     </ul>
   );
 }
 
+function JobRow({ job, selected }: { job: JobListing; selected: boolean }) {
+  const applyUrl = job.apply_url ?? job.url;
+  return (
+    <li className="flex items-start gap-3 py-4">
+      <input
+        type="checkbox"
+        className="mt-1.5"
+        checked={selected}
+        onChange={() => toggleSelectedJob(job.id)}
+      />
+      <div className="flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-slate-900 hover:text-slate-700 hover:underline"
+              >
+                {job.title}
+              </a>
+              {job.relevance_score != null && (
+                <RelevanceBadge score={job.relevance_score} />
+              )}
+              {job.experience_level && <LevelBadge level={job.experience_level} />}
+              {job.employment_type && job.employment_type !== "FULLTIME" && (
+                <TypeBadge type={job.employment_type} />
+              )}
+            </div>
+            <div className="mt-1 text-sm text-slate-600">
+              <span className="font-medium">{job.company}</span>
+              {job.location ? ` · ${job.location}` : ""}
+              {job.remote ? " · Remote" : ""}
+            </div>
+            {(job.salary_min != null || job.salary_max != null) && (
+              <div className="mt-1 text-sm text-slate-700">
+                {formatSalary(job)}
+              </div>
+            )}
+          </div>
+          <a
+            href={applyUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Apply →
+          </a>
+        </div>
+        <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+          {job.posted_at && <span>{formatDate(job.posted_at)}</span>}
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 uppercase tracking-wide text-slate-600">
+            {job.source}
+          </span>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 function RelevanceBadge({ score }: { score: number }) {
-  let tone = "bg-slate-100 text-slate-600";
+  let tone = "bg-slate-100 text-slate-500";
   if (score >= 70) tone = "bg-green-100 text-green-700";
   else if (score >= 40) tone = "bg-amber-100 text-amber-700";
-  else tone = "bg-slate-100 text-slate-500";
 
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
-      {score}%
+      {score}% match
     </span>
   );
+}
+
+function LevelBadge({ level }: { level: string }) {
+  const labels: Record<string, string> = {
+    intern: "Intern",
+    entry: "Entry",
+    mid: "Mid",
+    senior: "Senior",
+    lead: "Lead+",
+  };
+  return (
+    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+      {labels[level] ?? level}
+    </span>
+  );
+}
+
+function TypeBadge({ type }: { type: string }) {
+  const labels: Record<string, string> = {
+    PARTTIME: "Part-time",
+    CONTRACT: "Contract",
+    INTERN: "Internship",
+  };
+  return (
+    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+      {labels[type] ?? type}
+    </span>
+  );
+}
+
+function formatSalary(job: JobListing): string {
+  const currency = job.salary_currency ?? "USD";
+  const period = job.salary_period ?? "year";
+  const periodLabel =
+    period === "hour" ? "/hr" : period === "month" ? "/mo" : "/yr";
+
+  const format = (amount: number) => {
+    if (amount >= 1000) {
+      return `$${(amount / 1000).toFixed(0)}k`;
+    }
+    return `$${amount.toFixed(0)}`;
+  };
+
+  if (job.salary_min != null && job.salary_max != null) {
+    if (job.salary_min === job.salary_max) {
+      return `${format(job.salary_min)} ${currency}${periodLabel}`;
+    }
+    return `${format(job.salary_min)} – ${format(job.salary_max)} ${currency}${periodLabel}`;
+  }
+  if (job.salary_min != null) {
+    return `${format(job.salary_min)}+ ${currency}${periodLabel}`;
+  }
+  if (job.salary_max != null) {
+    return `Up to ${format(job.salary_max)} ${currency}${periodLabel}`;
+  }
+  return "";
 }
 
 function formatDate(isoString: string): string {

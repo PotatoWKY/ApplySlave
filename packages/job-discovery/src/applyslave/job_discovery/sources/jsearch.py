@@ -149,6 +149,19 @@ def _to_listing(raw: dict) -> JobListing | None:
 
         description = raw.get("job_description") or ""
 
+        # Salary parsing
+        salary_min = raw.get("job_min_salary")
+        salary_max = raw.get("job_max_salary")
+        salary_currency = raw.get("job_salary_currency")
+        salary_period_raw = raw.get("job_salary_period") or ""
+        salary_period = salary_period_raw.lower() if salary_period_raw else None
+
+        # Employment type and experience level
+        employment_type = raw.get("job_employment_type") or None
+        experience_level = _infer_experience_level(
+            title, raw.get("job_required_experience")
+        )
+
         return JobListing(
             id=f"jsearch-{job_id[:32]}" if job_id else f"jsearch-{hash(apply_link)}",
             source=JobSourceName.JSEARCH,
@@ -160,9 +173,41 @@ def _to_listing(raw: dict) -> JobListing | None:
             description_snippet=description[:240] if description else None,
             posted_at=posted_at,
             remote=is_remote,
+            salary_min=float(salary_min) if salary_min else None,
+            salary_max=float(salary_max) if salary_max else None,
+            salary_currency=salary_currency,
+            salary_period=salary_period,
+            employment_type=employment_type,
+            experience_level=experience_level,
         )
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def _infer_experience_level(title: str, required: dict | None) -> str | None:
+    """Best-effort extraction from title keywords + required years."""
+    title_lower = title.lower()
+    if any(kw in title_lower for kw in ("intern", "internship")):
+        return "intern"
+    if any(kw in title_lower for kw in ("staff", "principal", "director", "vp ")):
+        return "lead"
+    if any(kw in title_lower for kw in ("senior", "sr.", "sr ", "lead")):
+        return "senior"
+    if any(kw in title_lower for kw in ("junior", "jr.", "jr ", "entry", "associate")):
+        return "entry"
+
+    if required and isinstance(required, dict):
+        months = required.get("required_experience_in_months")
+        if isinstance(months, (int, float)):
+            years = months / 12
+            if years < 2:
+                return "entry"
+            if years < 5:
+                return "mid"
+            if years < 8:
+                return "senior"
+            return "lead"
+    return None
 
 
 def _passes_exclusion(listing: JobListing, query: SearchQuery) -> bool:

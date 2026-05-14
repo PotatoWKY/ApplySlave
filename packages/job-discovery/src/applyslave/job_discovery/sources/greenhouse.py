@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from applyslave.job_discovery.sources.base import ATSSource
+from applyslave.job_discovery.sources.base import (
+    ATSSource,
+    infer_experience_level_from_title,
+)
 from applyslave.shared import JobListing, JobSourceName
 
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
@@ -50,6 +53,7 @@ class GreenhouseSource(ATSSource):
                 apply_url=url,
                 posted_at=datetime.fromisoformat(updated_at) if updated_at else None,
                 remote=_looks_remote(location),
+                experience_level=infer_experience_level_from_title(title),
             )
         except (KeyError, ValueError):
             return None

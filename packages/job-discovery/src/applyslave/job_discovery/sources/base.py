@@ -22,6 +22,24 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 
+def infer_experience_level_from_title(title: str) -> str | None:
+    """Best-effort extraction of seniority level from a job title.
+
+    Returns one of: 'intern', 'entry', 'mid', 'senior', 'lead', or None.
+    Used by ATS sources where the API doesn't return level explicitly.
+    """
+    title_lower = title.lower()
+    if any(kw in title_lower for kw in ("intern", "internship")):
+        return "intern"
+    if any(kw in title_lower for kw in ("staff ", "principal ", "director ", "vp ", " vp")):
+        return "lead"
+    if any(kw in title_lower for kw in ("senior", "sr.", "sr ", "lead ", " lead")):
+        return "senior"
+    if any(kw in title_lower for kw in ("junior", "jr.", "jr ", "entry", "associate", " i ", " ii")):
+        return "entry"
+    return None
+
+
 class ATSSource(ABC):
     """Base class for all public-API-backed ATS sources."""
 

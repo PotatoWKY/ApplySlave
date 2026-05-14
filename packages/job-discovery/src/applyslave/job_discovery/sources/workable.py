@@ -11,7 +11,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from applyslave.job_discovery.sources.base import ATSSource
+from applyslave.job_discovery.sources.base import (
+    ATSSource,
+    infer_experience_level_from_title,
+)
 from applyslave.shared import JobListing, JobSourceName
 
 BASE_URL = "https://apply.workable.com/api/v3/accounts"
@@ -61,6 +64,7 @@ class WorkableSource(ATSSource):
                 description_snippet=(raw.get("description") or "")[:240] or None,
                 posted_at=posted_at,
                 remote=remote,
+                experience_level=infer_experience_level_from_title(title),
             )
         except (KeyError, ValueError):
             return None

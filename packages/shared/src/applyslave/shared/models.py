@@ -85,6 +85,12 @@ class JobListing(_StrictModel):
     description_snippet: str | None = None
     posted_at: datetime | None = None
     remote: bool = False
+    salary_min: float | None = None
+    salary_max: float | None = None
+    salary_currency: str | None = None
+    salary_period: str | None = None  # "year", "month", "hour"
+    employment_type: str | None = None  # "FULLTIME", "PARTTIME", "CONTRACT", "INTERN"
+    experience_level: str | None = None  # "entry", "mid", "senior", "lead"
 
 
 class SearchQuery(_StrictModel):

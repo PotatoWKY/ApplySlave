@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from applyslave.job_discovery.sources.base import ATSSource
+from applyslave.job_discovery.sources.base import (
+    ATSSource,
+    infer_experience_level_from_title,
+)
 from applyslave.shared import JobListing, JobSourceName
 
 BASE_URL = "https://api.lever.co/v0/postings"
@@ -64,6 +67,24 @@ class LeverSource(ATSSource):
                 description_snippet=description[:240] or None,
                 posted_at=posted_at,
                 remote=remote,
+                employment_type=_normalize_commitment(commitment),
+                experience_level=infer_experience_level_from_title(title),
             )
         except (KeyError, ValueError, TypeError):
             return None
+
+
+def _normalize_commitment(commitment: str | None) -> str | None:
+    """Normalize Lever's 'commitment' field to our employment_type taxonomy."""
+    if not commitment:
+        return None
+    lower = commitment.lower()
+    if "full" in lower:
+        return "FULLTIME"
+    if "part" in lower:
+        return "PARTTIME"
+    if "contract" in lower:
+        return "CONTRACT"
+    if "intern" in lower:
+        return "INTERN"
+    return None

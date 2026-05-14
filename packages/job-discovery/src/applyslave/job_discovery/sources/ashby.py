@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from applyslave.job_discovery.sources.base import ATSSource
+from applyslave.job_discovery.sources.base import (
+    ATSSource,
+    infer_experience_level_from_title,
+)
 from applyslave.shared import JobListing, JobSourceName
 
 BASE_URL = "https://api.ashbyhq.com/posting-api/job-board"
@@ -44,6 +47,26 @@ class AshbySource(ATSSource):
             remote = bool(raw.get("isRemote")) or (
                 bool(location) and "remote" in location.lower()
             )
+            employment_type_raw = raw.get("employmentType") or ""
+            employment_type = _normalize_employment(employment_type_raw)
+
+            # Ashby compensation: a list of tiers; we just look at the first
+            salary_min = salary_max = salary_currency = salary_period = None
+            comp_tiers = raw.get("compensationTiers") or []
+            if comp_tiers and isinstance(comp_tiers, list):
+                tier = comp_tiers[0]
+                if isinstance(tier, dict):
+                    salary_min = tier.get("minValue")
+                    salary_max = tier.get("maxValue")
+                    salary_currency = tier.get("currencyCode")
+                    interval = (tier.get("interval") or "").lower()
+                    if "year" in interval:
+                        salary_period = "year"
+                    elif "month" in interval:
+                        salary_period = "month"
+                    elif "hour" in interval:
+                        salary_period = "hour"
+
             return JobListing(
                 id=f"ashby-{company}-{job_id}",
                 source=self.name,
@@ -54,6 +77,27 @@ class AshbySource(ATSSource):
                 apply_url=apply_url,
                 posted_at=posted_at,
                 remote=remote,
+                salary_min=float(salary_min) if salary_min else None,
+                salary_max=float(salary_max) if salary_max else None,
+                salary_currency=salary_currency,
+                salary_period=salary_period,
+                employment_type=employment_type,
+                experience_level=infer_experience_level_from_title(title),
             )
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             return None
+
+
+def _normalize_employment(raw: str) -> str | None:
+    if not raw:
+        return None
+    lower = raw.lower().replace(" ", "").replace("-", "").replace("_", "")
+    if "fulltime" in lower:
+        return "FULLTIME"
+    if "parttime" in lower:
+        return "PARTTIME"
+    if "contract" in lower:
+        return "CONTRACT"
+    if "intern" in lower:
+        return "INTERN"
+    return None

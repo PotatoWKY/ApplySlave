@@ -55,6 +55,12 @@ export interface JobListing {
   posted_at?: string | null;
   remote: boolean;
   relevance_score?: number;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  salary_currency?: string | null;
+  salary_period?: string | null;
+  employment_type?: string | null;
+  experience_level?: string | null;
 }
 
 export type ApplicationStatus =
