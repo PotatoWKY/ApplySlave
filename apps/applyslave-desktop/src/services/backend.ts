@@ -65,6 +65,14 @@ export const backendClient = {
       method: "DELETE",
     }),
 
+  getSettings: () => request<Record<string, string | null>>("/api/settings"),
+  saveSettings: (settings: Record<string, string | null>) =>
+    request<{ saved: boolean }>("/api/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(settings),
+    }),
+
   getProfile: () => request<UserProfile | null>("/api/profile"),
   saveProfile: (profile: UserProfile) =>
     request<UserProfile>("/api/profile", {

@@ -6,6 +6,7 @@ Keeping construction centralized so tests can swap them via
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -29,6 +30,33 @@ def get_data_dir() -> Path:
     if (home / "Library" / "Application Support").exists():
         return home / "Library" / "Application Support" / "ApplySlave"
     return home / ".config" / "ApplySlave"
+
+
+def _settings_path() -> Path:
+    return get_data_dir() / "settings.json"
+
+
+def load_settings() -> dict:
+    """Load user settings from disk. Returns empty dict if not found."""
+    path = _settings_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_settings(settings: dict) -> None:
+    """Persist user settings to disk."""
+    path = _settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+
+def get_jsearch_api_key() -> str | None:
+    """Return the JSearch API key if configured, else None."""
+    return load_settings().get("jsearch_api_key") or None
 
 
 @lru_cache(maxsize=1)

@@ -40,7 +40,8 @@ export type JobSourceName =
   | "lever"
   | "ashby"
   | "workable"
-  | "linkedin";
+  | "linkedin"
+  | "jsearch";
 
 export interface JobListing {
   id: string;

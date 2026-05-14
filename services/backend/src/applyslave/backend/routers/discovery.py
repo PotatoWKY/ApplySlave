@@ -16,7 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
-from applyslave.backend.dependencies import get_result_logger
+from applyslave.backend.dependencies import get_jsearch_api_key, get_result_logger
 from applyslave.job_discovery import build_default_aggregator
 from applyslave.orchestrator import ResultLogger
 from applyslave.shared import JobListing, SearchQuery
@@ -118,7 +118,7 @@ async def _run_discovery(
         {"type": "discovery_started", "task_id": task_id}
     )
 
-    aggregator, sources = build_default_aggregator()
+    aggregator, sources = build_default_aggregator(jsearch_api_key=get_jsearch_api_key())
     try:
         jobs = await aggregator.discover(query)
     except Exception as error:  # noqa: BLE001

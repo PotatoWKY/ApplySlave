@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Request, status
 from pydantic import BaseModel
 
 from applyslave.applicator.llm import ModelManager
-from applyslave.backend.dependencies import get_data_dir
+from applyslave.backend.dependencies import get_data_dir, load_settings, save_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["system"])
@@ -131,6 +131,32 @@ async def delete_model(request: Request) -> dict:
         partial.unlink()
     logger.info("Deleted model at %s", manager.model_path)
     return {"deleted": True, "path": str(manager.model_path)}
+
+
+@router.get("/settings")
+async def get_settings() -> dict:
+    """Return all user settings."""
+    settings = load_settings()
+    # Mask the API key for display (show last 4 chars only)
+    if settings.get("jsearch_api_key"):
+        key = settings["jsearch_api_key"]
+        settings["jsearch_api_key_masked"] = f"...{key[-4:]}" if len(key) > 4 else "****"
+    return settings
+
+
+@router.post("/settings")
+async def update_settings(body: dict) -> dict:
+    """Merge provided keys into settings. Only known keys are accepted."""
+    allowed_keys = {"jsearch_api_key"}
+    current = load_settings()
+    for key, value in body.items():
+        if key in allowed_keys:
+            if value == "" or value is None:
+                current.pop(key, None)
+            else:
+                current[key] = value
+    save_settings(current)
+    return {"saved": True}
 
 
 @router.post(

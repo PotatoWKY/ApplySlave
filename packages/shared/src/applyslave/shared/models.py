@@ -69,6 +69,7 @@ class JobSourceName(str, Enum):
     ASHBY = "ashby"
     WORKABLE = "workable"
     LINKEDIN = "linkedin"
+    JSEARCH = "jsearch"
 
 
 class JobListing(_StrictModel):

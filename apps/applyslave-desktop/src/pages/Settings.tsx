@@ -7,8 +7,97 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
+      <JSearchSection />
       <ModelSection />
     </div>
+  );
+}
+
+function JSearchSection() {
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: backendClient.getSettings,
+  });
+
+  const [keyInput, setKeyInput] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (settingsQuery.data?.jsearch_api_key) {
+      setKeyInput(settingsQuery.data.jsearch_api_key as string);
+    }
+  }, [settingsQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: (key: string) =>
+      backendClient.saveSettings({ jsearch_api_key: key || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  const maskedKey = settingsQuery.data?.jsearch_api_key_masked as
+    | string
+    | undefined;
+  const hasKey = Boolean(settingsQuery.data?.jsearch_api_key);
+
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-xl font-medium">Job Search API</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Enables searching across all job boards (LinkedIn, Indeed, Glassdoor,
+        Workday, etc). Without this, only the 603 tech companies in our local
+        list are searched.
+      </p>
+
+      <div className="mt-4">
+        <label className="block text-sm font-medium text-slate-700">
+          JSearch API Key (RapidAPI)
+        </label>
+        <div className="mt-1 flex gap-2">
+          <input
+            type="password"
+            value={keyInput}
+            onChange={(event) => {
+              setKeyInput(event.target.value);
+              setSaved(false);
+            }}
+            placeholder="Paste your x-rapidapi-key here"
+            className="block flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => saveMutation.mutate(keyInput)}
+            disabled={saveMutation.isPending}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-50"
+          >
+            {saveMutation.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+        {saved && (
+          <div className="mt-2 text-sm text-green-600">Key saved.</div>
+        )}
+        {hasKey && !saved && (
+          <div className="mt-2 text-xs text-slate-500">
+            Current key: {maskedKey}
+          </div>
+        )}
+        <div className="mt-3 text-xs text-slate-400">
+          Get a free key (200 searches/month) at{" "}
+          <a
+            href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch"
+            target="_blank"
+            rel="noreferrer"
+            className="text-slate-600 underline"
+          >
+            rapidapi.com/jsearch
+          </a>
+        </div>
+      </div>
+    </section>
   );
 }
 
