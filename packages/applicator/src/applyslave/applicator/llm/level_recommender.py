@@ -147,6 +147,13 @@ def _has_lead_title(title: str) -> bool:
 
 
 def _compute_effective_years(profile: UserProfile) -> float:
+    """Sum of (end - start) for full-time, non-internship roles.
+
+    Education does NOT add to effective years. Most employers count
+    work experience and degree separately — a JD asking for "3 years
+    experience" means 3 years of work, not 2 years + a master's.
+    Education affects level via the new-grad rule below, not by year math.
+    """
     total_months = 0
     for exp in profile.experience:
         if _looks_like_internship(exp.title):
@@ -157,15 +164,7 @@ def _compute_effective_years(profile: UserProfile) -> float:
             months = (end.year - start.year) * 12 + (end.month - start.month)
             total_months += max(0, months)
 
-    bonus_years = 0.0
-    for edu in profile.education:
-        deg = (edu.degree or "").lower()
-        if "phd" in deg or "doctor" in deg or "ph.d" in deg:
-            bonus_years = max(bonus_years, 3.0)
-        elif any(kw in deg for kw in ("master", "msc", "ms ", "m.s.", "m.s ")):
-            bonus_years = max(bonus_years, 1.0)
-
-    return total_months / 12 + bonus_years
+    return total_months / 12
 
 
 def _count_full_time_roles(profile: UserProfile) -> int:
