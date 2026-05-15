@@ -14,6 +14,7 @@ export interface DiscoveryState {
   keywords: string;
   location: string;
   remoteOnly: boolean;
+  experienceLevels: string[];
   activeTaskId: string | null;
   selectedJobIds: ReadonlySet<string>;
   sortMode: SortMode;
@@ -23,6 +24,7 @@ let state: DiscoveryState = {
   keywords: "",
   location: "",
   remoteOnly: false,
+  experienceLevels: [],
   activeTaskId: null,
   selectedJobIds: new Set<string>(),
   sortMode: "relevance",

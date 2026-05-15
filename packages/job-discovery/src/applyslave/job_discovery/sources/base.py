@@ -106,6 +106,7 @@ def apply_query_filters(
     needle = query.keywords.lower().strip()
     location_needle = query.location.lower().strip()
     exclude_lower = {c.lower() for c in query.exclude_companies}
+    allowed_levels = {level.lower() for level in query.experience_levels}
 
     filtered: list[JobListing] = []
     for job in jobs:
@@ -125,6 +126,12 @@ def apply_query_filters(
                 continue
         if job.company.lower() in exclude_lower:
             continue
+        # Level filter: if user specified levels, drop jobs whose inferred
+        # level is set AND not in the allow-list. Jobs with no inferred level
+        # are kept (we'd rather show a maybe-relevant job than miss it).
+        if allowed_levels and job.experience_level:
+            if job.experience_level not in allowed_levels:
+                continue
         filtered.append(job)
 
     filtered.sort(key=lambda job: (job.posted_at or 0, job.company), reverse=True)

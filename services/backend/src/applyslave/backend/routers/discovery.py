@@ -32,6 +32,7 @@ class DiscoverRequest(BaseModel):
     location: str = ""
     remote_only: bool = False
     exclude_companies: list[str] = []
+    experience_levels: list[str] = []
     max_results: int = 200
     sources: list[str] | None = None  # reserved for future filtering
 
@@ -120,6 +121,7 @@ async def _run_discovery(
         location=payload.location,
         remote_only=payload.remote_only,
         exclude_companies=payload.exclude_companies,
+        experience_levels=payload.experience_levels,
         max_results=payload.max_results,
     )
     result_logger.save_discovery_task(

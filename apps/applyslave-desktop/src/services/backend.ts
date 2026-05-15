@@ -13,6 +13,7 @@ import type {
   DiscoveryTaskDetail,
   HealthResponse,
   ModelStatusResponse,
+  RecommendedLevels,
   SubmitBatchResponse,
   UserProfile,
 } from "../types/api";
@@ -76,6 +77,8 @@ export const backendClient = {
   getProfile: () => request<UserProfile | null>("/api/profile"),
   getSuggestedSearches: () =>
     request<{ suggestions: string[] }>("/api/profile/suggested-searches"),
+  getRecommendedLevels: () =>
+    request<RecommendedLevels>("/api/profile/recommended-levels"),
   saveProfile: (profile: UserProfile) =>
     request<UserProfile>("/api/profile", {
       method: "POST",

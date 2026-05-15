@@ -100,7 +100,17 @@ export interface DiscoverRequest {
   location: string;
   remote_only: boolean;
   exclude_companies: string[];
+  experience_levels?: string[];
   max_results: number;
+}
+
+export interface RecommendedLevels {
+  recommended: string[];
+  stretch: string[];
+  off_target: string[];
+  reasoning: string;
+  from_cache?: boolean;
+  llm_used?: boolean;
 }
 
 export interface DiscoverResponse {

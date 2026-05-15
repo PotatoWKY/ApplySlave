@@ -9,7 +9,7 @@ import {
   subscribeDiscoveryState,
   toggleSelectedJob,
 } from "../state/discovery";
-import type { JobListing } from "../types/api";
+import type { JobListing, RecommendedLevels } from "../types/api";
 
 function useDiscoveryState() {
   return useSyncExternalStore(subscribeDiscoveryState, getDiscoveryState);
@@ -21,6 +21,7 @@ export function DiscoveryPage() {
     keywords,
     location,
     remoteOnly,
+    experienceLevels,
     activeTaskId,
     selectedJobIds,
     sortMode,
@@ -29,6 +30,11 @@ export function DiscoveryPage() {
   const suggestionsQuery = useQuery({
     queryKey: ["suggested-searches"],
     queryFn: backendClient.getSuggestedSearches,
+  });
+
+  const levelsQuery = useQuery({
+    queryKey: ["recommended-levels"],
+    queryFn: backendClient.getRecommendedLevels,
   });
 
   // Set default keywords from suggestions on first load (only if empty)
@@ -42,11 +48,29 @@ export function DiscoveryPage() {
     }
   }, [suggestionsQuery.data]);
 
+  // Default-select recommended levels on first load
+  useEffect(() => {
+    const current = getDiscoveryState();
+    if (
+      levelsQuery.data?.recommended &&
+      current.experienceLevels.length === 0
+    ) {
+      setDiscoveryState({
+        experienceLevels: [...levelsQuery.data.recommended],
+      });
+    }
+  }, [levelsQuery.data]);
+
   const startMutation = useMutation({
     mutationFn: backendClient.startDiscovery,
+    onMutate: () => {
+      // Clear old results immediately so the user doesn't see stale data
+      // while the new search is running.
+      setDiscoveryState({ activeTaskId: null });
+      clearSelectedJobs();
+    },
     onSuccess: (response) => {
       setDiscoveryState({ activeTaskId: response.task_id });
-      clearSelectedJobs();
     },
   });
 
@@ -167,6 +191,15 @@ export function DiscoveryPage() {
           />
           Remote only
         </label>
+
+        <LevelFilter
+          levels={levelsQuery.data}
+          selected={experienceLevels}
+          onChange={(next) =>
+            setDiscoveryState({ experienceLevels: next })
+          }
+        />
+
         <div className="mt-4">
           <button
             type="button"
@@ -176,6 +209,7 @@ export function DiscoveryPage() {
                 location,
                 remote_only: remoteOnly,
                 exclude_companies: [],
+                experience_levels: experienceLevels,
                 max_results: 100,
               })
             }
@@ -243,6 +277,89 @@ export function DiscoveryPage() {
             <JobList jobs={sortedJobs} selected={selectedJobIds} />
           )}
         </section>
+      )}
+    </div>
+  );
+}
+
+function LevelFilter({
+  levels,
+  selected,
+  onChange,
+}: {
+  levels: RecommendedLevels | undefined;
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const allLevels = ["intern", "entry", "mid", "senior", "lead"];
+  const labels: Record<string, string> = {
+    intern: "Intern",
+    entry: "Entry",
+    mid: "Mid",
+    senior: "Senior",
+    lead: "Lead+",
+  };
+
+  const recommended = new Set(levels?.recommended ?? []);
+  const stretch = new Set(levels?.stretch ?? []);
+
+  const toggle = (level: string) => {
+    if (selected.includes(level)) {
+      onChange(selected.filter((current) => current !== level));
+    } else {
+      onChange([...selected, level]);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="font-medium text-slate-700">Levels:</span>
+        {allLevels.map((level) => {
+          const isSelected = selected.includes(level);
+          const tag = recommended.has(level)
+            ? "rec"
+            : stretch.has(level)
+              ? "stretch"
+              : "off";
+          return (
+            <button
+              key={level}
+              type="button"
+              onClick={() => toggle(level)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                isSelected
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : tag === "rec"
+                    ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                    : tag === "stretch"
+                      ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : "border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100"
+              }`}
+              title={
+                tag === "rec"
+                  ? "AI recommended"
+                  : tag === "stretch"
+                    ? "Stretch — possible but not a strong fit"
+                    : "Off-target — likely under/over qualified"
+              }
+            >
+              {labels[level]}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="ml-auto text-xs text-slate-500 hover:underline"
+        >
+          Clear filter
+        </button>
+      </div>
+      {levels?.reasoning && (
+        <div className="mt-1.5 text-xs text-slate-500">
+          AI: {levels.reasoning}
+        </div>
       )}
     </div>
   );

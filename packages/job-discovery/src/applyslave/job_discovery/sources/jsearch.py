@@ -211,6 +211,12 @@ def _infer_experience_level(title: str, required: dict | None) -> str | None:
 
 
 def _passes_exclusion(listing: JobListing, query: SearchQuery) -> bool:
-    """Check company exclusion list."""
+    """Check exclusion list and level filter."""
     exclude_lower = {company.lower() for company in query.exclude_companies}
-    return listing.company.lower() not in exclude_lower
+    if listing.company.lower() in exclude_lower:
+        return False
+    allowed_levels = {level.lower() for level in query.experience_levels}
+    if allowed_levels and listing.experience_level:
+        if listing.experience_level not in allowed_levels:
+            return False
+    return True

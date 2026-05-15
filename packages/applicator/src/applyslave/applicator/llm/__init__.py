@@ -1,6 +1,11 @@
 """Local LLM via llama-cpp-python, with model download and prompt building."""
 
 from applyslave.applicator.llm.client import LLMClient, StaticLLMClient
+from applyslave.applicator.llm.level_recommender import (
+    LevelRecommendation,
+    LevelRecommender,
+    VALID_LEVELS,
+)
 from applyslave.applicator.llm.model_manager import (
     DEFAULT_MODEL_NAME,
     DEFAULT_MODEL_URL,
@@ -14,7 +19,10 @@ __all__ = [
     "DEFAULT_MODEL_URL",
     "DefaultPromptBuilder",
     "LLMClient",
+    "LevelRecommendation",
+    "LevelRecommender",
     "ModelManager",
     "ResumeExtractor",
     "StaticLLMClient",
+    "VALID_LEVELS",
 ]
