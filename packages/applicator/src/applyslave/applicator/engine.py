@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 from applyslave.applicator.browser import ActionExecutor, BrowserManager, DOMExtractor
 from applyslave.applicator.form_filler import FormMapper, RuleBasedPageAnalyzer
@@ -36,12 +37,16 @@ class ApplicatorEngine:
         page_analyzer: PageAnalyzer | None = None,
         form_mapper: FormMapper | None = None,
         action_executor: ActionExecutor | None = None,
+        dry_run: bool = True,
+        screenshot_dir: "Path | None" = None,
     ) -> None:
         self._browser = browser
         self._dom_extractor = dom_extractor or DOMExtractor()
         self._page_analyzer = page_analyzer or RuleBasedPageAnalyzer()
         self._form_mapper = form_mapper or FormMapper()
         self._action_executor = action_executor or ActionExecutor()
+        self._dry_run = dry_run
+        self._screenshot_dir = screenshot_dir
 
     async def apply(self, url: str, profile: UserProfile) -> ApplyResult:
         page = await self._browser.new_page()
@@ -111,6 +116,31 @@ class ApplicatorEngine:
                         error="No submit button found after filling",
                     )
 
+                # Take a screenshot of the filled form before we click submit
+                # (or stop here in dry-run mode).
+                screenshot_path = await self._capture_screenshot(page, url)
+
+                if self._dry_run:
+                    logger.info(
+                        "DRY-RUN: filled form for %s, stopping before submit. "
+                        "Screenshot: %s",
+                        url,
+                        screenshot_path,
+                    )
+                    return ApplyResult(
+                        success=True,
+                        status=ApplicationStatus.NEEDS_REVIEW,
+                        url=url,
+                        confidence=plan.confidence,
+                        intervention_reason="DRY_RUN",
+                        error=(
+                            f"Dry-run complete. Form filled, submit not "
+                            f"clicked. Screenshot: {screenshot_path}"
+                            if screenshot_path
+                            else "Dry-run complete. Form filled, submit not clicked."
+                        ),
+                    )
+
                 from applyslave.shared import ActionType, PageAction
 
                 await self._action_executor.execute(
@@ -147,6 +177,23 @@ class ApplicatorEngine:
                 url,
                 datetime.now(UTC).isoformat(),
             )
+
+    async def _capture_screenshot(self, page, url: str) -> str | None:
+        """Save a screenshot of the filled form. Returns absolute path or None."""
+        if self._screenshot_dir is None:
+            return None
+        try:
+            self._screenshot_dir.mkdir(parents=True, exist_ok=True)
+            from urllib.parse import urlparse
+
+            domain = urlparse(url).netloc.replace(":", "_") or "unknown"
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            path = self._screenshot_dir / f"{timestamp}_{domain}.png"
+            await page.screenshot(path=str(path), full_page=True)
+            return str(path)
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Failed to capture screenshot: %s", error)
+            return None
 
 
 def _find_submit_selector(dom) -> str | None:

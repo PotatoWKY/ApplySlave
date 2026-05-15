@@ -59,6 +59,14 @@ def get_jsearch_api_key() -> str | None:
     return load_settings().get("jsearch_api_key") or None
 
 
+def is_dry_run_enabled() -> bool:
+    """Read the dry_run flag. Defaults to True (safe)."""
+    settings = load_settings()
+    if "dry_run" not in settings:
+        return True
+    return bool(settings["dry_run"])
+
+
 @lru_cache(maxsize=1)
 def get_profile_store() -> ProfileStore:
     return ProfileStore(get_data_dir())

@@ -20,9 +20,20 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.ws_hub = WebSocketHub()
         app.state.model_download_state = {"in_progress": False, "task_id": None}
+
+        # Background worker that consumes queued applications
+        from applyslave.backend.applicator_worker import ApplicatorWorker
+
+        worker = ApplicatorWorker(ws_hub=app.state.ws_hub)
+        app.state.applicator_worker = worker
+        await worker.start()
         logger.info("Backend started")
-        yield
-        logger.info("Backend stopping")
+
+        try:
+            yield
+        finally:
+            logger.info("Backend stopping")
+            await worker.stop()
 
     app = FastAPI(
         title="ApplySlave Backend",

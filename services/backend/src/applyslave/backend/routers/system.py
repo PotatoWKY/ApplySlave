@@ -147,7 +147,7 @@ async def get_settings() -> dict:
 @router.post("/settings")
 async def update_settings(body: dict) -> dict:
     """Merge provided keys into settings. Only known keys are accepted."""
-    allowed_keys = {"jsearch_api_key"}
+    allowed_keys = {"jsearch_api_key", "dry_run"}
     current = load_settings()
     for key, value in body.items():
         if key in allowed_keys:

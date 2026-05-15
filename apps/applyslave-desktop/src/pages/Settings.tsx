@@ -7,9 +7,70 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
+      <DryRunSection />
       <JSearchSection />
       <ModelSection />
     </div>
+  );
+}
+
+function DryRunSection() {
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: backendClient.getSettings,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (dryRun: boolean) =>
+      backendClient.saveSettings({ dry_run: dryRun ? "true" : "" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+
+  // Default: dry_run is on if not explicitly set
+  const stored = settingsQuery.data?.dry_run;
+  const isOn = stored === undefined ? true : Boolean(stored);
+
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-medium">Dry-run mode</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            When ON, the apply pipeline opens each posting, fills the form,
+            and takes a screenshot — but stops just before clicking Submit.
+            Use this until you're confident the LLM picks the right values.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Screenshots saved to ~/Library/Application Support/ApplySlave/screenshots/
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isOn}
+          onClick={() => updateMutation.mutate(!isOn)}
+          disabled={updateMutation.isPending}
+          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+            isOn ? "bg-slate-900" : "bg-slate-300"
+          } disabled:opacity-50`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+              isOn ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+      {!isOn && (
+        <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <strong>Live submission is enabled.</strong> The next queued
+          application will be actually submitted to the employer.
+        </div>
+      )}
+    </section>
   );
 }
 
