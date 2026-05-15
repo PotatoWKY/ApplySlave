@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from applyslave.backend.dependencies import get_result_logger
 from applyslave.orchestrator import ResultLogger
-from applyslave.shared import ApplicationRecord, ApplicationStatus
+from applyslave.shared import ApplicationRecord, ApplicationStatus, JobListing
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -19,14 +19,10 @@ class ApplicationsListResponse(BaseModel):
     applications: list[ApplicationRecord]
 
 
-class SubmitJob(BaseModel):
-    url: str
-    company: str
-    title: str
-
-
 class SubmitBatchRequest(BaseModel):
-    jobs: list[SubmitJob]
+    """Accepts the full JobListing so we can store it for later display."""
+
+    jobs: list[JobListing]
 
 
 class SubmitBatchResponse(BaseModel):
@@ -75,7 +71,8 @@ async def submit_batch(
     accepted = 0
     skipped = 0
     for job in payload.jobs:
-        existing = result_logger.get_by_url(job.url)
+        url_str = str(job.apply_url or job.url)
+        existing = result_logger.get_by_url(url_str)
         if existing is not None and existing.status in {
             ApplicationStatus.IN_PROGRESS,
             ApplicationStatus.SUBMITTED,
@@ -84,10 +81,11 @@ async def submit_batch(
             continue
         result_logger.insert_application(
             ApplicationRecord(
-                url=job.url,
+                url=url_str,
                 company=job.company,
                 title=job.title,
                 status=ApplicationStatus.QUEUED,
+                job=job,
             )
         )
         accepted += 1

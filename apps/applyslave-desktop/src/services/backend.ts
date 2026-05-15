@@ -12,6 +12,7 @@ import type {
   DiscoverResponse,
   DiscoveryTaskDetail,
   HealthResponse,
+  JobListing,
   ModelStatusResponse,
   RecommendedLevels,
   SubmitBatchResponse,
@@ -110,9 +111,7 @@ export const backendClient = {
     const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
     return request<ApplicationsListResponse>(`/api/applications${suffix}`);
   },
-  submitBatch: (
-    jobs: Array<{ url: string; company: string; title: string }>,
-  ) =>
+  submitBatch: (jobs: JobListing[]) =>
     request<SubmitBatchResponse>("/api/applications", {
       method: "POST",
       headers: { "content-type": "application/json" },

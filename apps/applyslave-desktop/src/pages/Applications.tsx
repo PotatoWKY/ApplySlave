@@ -1,16 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { JobRow } from "../components/JobRow";
 import { backendClient } from "../services/backend";
-import type { ApplicationRecord, ApplicationStatus } from "../types/api";
-
-const STATUS_COLORS: Record<ApplicationStatus, string> = {
-  queued: "bg-slate-100 text-slate-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  submitted: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-700",
-  skipped: "bg-slate-100 text-slate-500",
-  needs_review: "bg-amber-100 text-amber-700",
-};
+import type { ApplicationRecord, JobListing } from "../types/api";
 
 export function ApplicationsPage() {
   const applicationsQuery = useQuery({
@@ -33,7 +25,12 @@ export function ApplicationsPage() {
       ) : (
         <ul className="mt-4 divide-y divide-slate-100">
           {applications.map((record) => (
-            <ApplicationRow key={record.id ?? record.url} record={record} />
+            <JobRow
+              key={record.id ?? record.url}
+              job={recordToJob(record)}
+              status={record.status}
+              error={record.error}
+            />
           ))}
         </ul>
       )}
@@ -41,30 +38,23 @@ export function ApplicationsPage() {
   );
 }
 
-function ApplicationRow({ record }: { record: ApplicationRecord }) {
-  const badgeClass = STATUS_COLORS[record.status];
-  return (
-    <li className="flex items-start justify-between gap-3 py-3">
-      <div className="flex-1">
-        <div className="font-medium">{record.title}</div>
-        <div className="text-sm text-slate-600">{record.company}</div>
-        <a
-          href={record.url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-slate-500 hover:underline"
-        >
-          {record.url}
-        </a>
-        {record.error && (
-          <div className="mt-1 text-xs text-red-600">{record.error}</div>
-        )}
-      </div>
-      <span
-        className={`rounded-full px-2 py-0.5 text-xs uppercase tracking-wide ${badgeClass}`}
-      >
-        {record.status.replace("_", " ")}
-      </span>
-    </li>
-  );
+/**
+ * Build a JobListing-shaped object for a row whose source data lives on the
+ * application record. Records queued before we started capturing the full
+ * JobListing on submit only have url/company/title — we fill the rest with
+ * sensible defaults so JobRow still renders cleanly.
+ */
+function recordToJob(record: ApplicationRecord): JobListing {
+  if (record.job) {
+    return record.job;
+  }
+  return {
+    id: String(record.id ?? record.url),
+    source: "linkedin",
+    company: record.company,
+    title: record.title,
+    url: record.url,
+    apply_url: record.url,
+    remote: false,
+  };
 }

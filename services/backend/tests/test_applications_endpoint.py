@@ -3,21 +3,24 @@ from __future__ import annotations
 import httpx
 
 
+def _job_payload(url: str, company: str, title: str) -> dict:
+    return {
+        "id": f"test-{url}",
+        "source": "greenhouse",
+        "company": company,
+        "title": title,
+        "url": url,
+        "remote": False,
+    }
+
+
 async def test_submit_batch_and_list(
     backend_client: httpx.AsyncClient,
 ) -> None:
     payload = {
         "jobs": [
-            {
-                "url": "https://example.com/apply/1",
-                "company": "Example",
-                "title": "SWE",
-            },
-            {
-                "url": "https://example.com/apply/2",
-                "company": "Example",
-                "title": "PM",
-            },
+            _job_payload("https://example.com/apply/1", "Example", "SWE"),
+            _job_payload("https://example.com/apply/2", "Example", "PM"),
         ]
     }
     submit_response = await backend_client.post("/api/applications", json=payload)
@@ -33,16 +36,16 @@ async def test_submit_batch_and_list(
         "https://example.com/apply/1",
         "https://example.com/apply/2",
     }
+    # Each application should retain the original JobListing for display
+    for app in body["applications"]:
+        assert app["job"] is not None
+        assert app["job"]["source"] == "greenhouse"
 
 
 async def test_submit_skips_duplicate_in_flight(
     backend_client: httpx.AsyncClient,
 ) -> None:
-    first = {
-        "jobs": [
-            {"url": "https://x/1", "company": "X", "title": "SWE"},
-        ]
-    }
+    first = {"jobs": [_job_payload("https://x/1", "X", "SWE")]}
     await backend_client.post("/api/applications", json=first)
 
     # Same URL again — orchestrator would still try (status is queued),

@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS applications (
     status TEXT NOT NULL,
     error TEXT,
     applied_at TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    job_listing_json TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
@@ -59,22 +60,36 @@ class ResultLogger:
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            # Migration: older DBs may not have the job_listing_json column
+            cursor = conn.execute("PRAGMA table_info(applications)")
+            columns = {row["name"] for row in cursor.fetchall()}
+            if "job_listing_json" not in columns:
+                conn.execute(
+                    "ALTER TABLE applications ADD COLUMN job_listing_json TEXT"
+                )
 
     # --- Applications ----------------------------------------------------
 
     def insert_application(self, record: ApplicationRecord) -> ApplicationRecord:
         now = datetime.now(UTC)
         applied_at = record.applied_at.isoformat() if record.applied_at else None
+        job_json = (
+            record.job.model_dump_json() if record.job is not None else None
+        )
         with self._connect() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO applications (
-                    url, company, title, status, error, applied_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    url, company, title, status, error, applied_at, created_at,
+                    job_listing_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
                     status = excluded.status,
                     error = excluded.error,
-                    applied_at = excluded.applied_at
+                    applied_at = excluded.applied_at,
+                    job_listing_json = COALESCE(
+                        excluded.job_listing_json, job_listing_json
+                    )
                 RETURNING id
                 """,
                 (
@@ -85,6 +100,7 @@ class ResultLogger:
                     record.error,
                     applied_at,
                     now.isoformat(),
+                    job_json,
                 ),
             )
             inserted_id = int(cursor.fetchone()[0])
@@ -196,8 +212,20 @@ class ResultLogger:
 
 
 def _row_to_record(row: sqlite3.Row) -> ApplicationRecord:
+    from applyslave.shared import JobListing
+
     applied_at_str = row["applied_at"]
     created_at_str = row["created_at"]
+
+    job: JobListing | None = None
+    # Older rows may not have this column; sqlite3.Row indexes by name only
+    # if the column exists, so guard with `keys()`.
+    if "job_listing_json" in row.keys() and row["job_listing_json"]:
+        try:
+            job = JobListing.model_validate_json(row["job_listing_json"])
+        except Exception:  # noqa: BLE001
+            job = None
+
     return ApplicationRecord(
         id=row["id"],
         url=row["url"],
@@ -207,4 +235,5 @@ def _row_to_record(row: sqlite3.Row) -> ApplicationRecord:
         error=row["error"],
         applied_at=datetime.fromisoformat(applied_at_str) if applied_at_str else None,
         created_at=datetime.fromisoformat(created_at_str) if created_at_str else None,
+        job=job,
     )

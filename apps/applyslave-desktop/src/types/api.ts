@@ -80,6 +80,7 @@ export interface ApplicationRecord {
   error?: string | null;
   applied_at?: string | null;
   created_at?: string | null;
+  job?: JobListing | null;
 }
 
 export interface HealthResponse {

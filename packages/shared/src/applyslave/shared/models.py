@@ -145,6 +145,7 @@ class ApplicationRecord(_StrictModel):
     error: str | None = None
     applied_at: datetime | None = None
     created_at: datetime | None = None
+    job: JobListing | None = None
 
 
 class ApplyResult(_StrictModel):

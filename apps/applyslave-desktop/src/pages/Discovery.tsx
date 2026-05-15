@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { JobRow } from "../components/JobRow";
 import { backendClient } from "../services/backend";
 import {
   clearSelectedJobs,
@@ -123,13 +124,7 @@ export function DiscoveryPage() {
   const submitSelected = () => {
     const selected = sortedJobs.filter((job) => selectedJobIds.has(job.id));
     if (selected.length === 0) return;
-    submitMutation.mutate(
-      selected.map((job) => ({
-        url: job.apply_url ?? job.url,
-        company: job.company,
-        title: job.title,
-      })),
-    );
+    submitMutation.mutate(selected);
   };
 
   const suggestions = suggestionsQuery.data?.suggestions ?? [];
@@ -399,152 +394,15 @@ function JobList({
   return (
     <ul className="mt-4 divide-y divide-slate-100">
       {jobs.map((job) => (
-        <JobRow key={job.id} job={job} selected={selected.has(job.id)} />
+        <JobRow
+          key={job.id}
+          job={job}
+          selectable={{
+            selected: selected.has(job.id),
+            onToggle: () => toggleSelectedJob(job.id),
+          }}
+        />
       ))}
     </ul>
   );
-}
-
-function JobRow({ job, selected }: { job: JobListing; selected: boolean }) {
-  const applyUrl = job.apply_url ?? job.url;
-  return (
-    <li className="flex items-start gap-3 py-4">
-      <input
-        type="checkbox"
-        className="mt-1.5"
-        checked={selected}
-        onChange={() => toggleSelectedJob(job.id)}
-      />
-      <div className="flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noreferrer"
-                className="font-medium text-slate-900 hover:text-slate-700 hover:underline"
-              >
-                {job.title}
-              </a>
-              {job.relevance_score != null && (
-                <RelevanceBadge score={job.relevance_score} />
-              )}
-              {job.experience_level && <LevelBadge level={job.experience_level} />}
-              {job.employment_type && job.employment_type !== "FULLTIME" && (
-                <TypeBadge type={job.employment_type} />
-              )}
-            </div>
-            <div className="mt-1 text-sm text-slate-600">
-              <span className="font-medium">{job.company}</span>
-              {job.location ? ` · ${job.location}` : ""}
-              {job.remote ? " · Remote" : ""}
-            </div>
-            {(job.salary_min != null || job.salary_max != null) && (
-              <div className="mt-1 text-sm text-slate-700">
-                {formatSalary(job)}
-              </div>
-            )}
-          </div>
-          <a
-            href={applyUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Apply →
-          </a>
-        </div>
-        <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
-          {job.posted_at && <span>{formatDate(job.posted_at)}</span>}
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 uppercase tracking-wide text-slate-600">
-            {job.source}
-          </span>
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function RelevanceBadge({ score }: { score: number }) {
-  let tone = "bg-slate-100 text-slate-500";
-  if (score >= 70) tone = "bg-green-100 text-green-700";
-  else if (score >= 40) tone = "bg-amber-100 text-amber-700";
-
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
-      {score}% match
-    </span>
-  );
-}
-
-function LevelBadge({ level }: { level: string }) {
-  const labels: Record<string, string> = {
-    intern: "Intern",
-    entry: "Entry",
-    mid: "Mid",
-    senior: "Senior",
-    lead: "Lead+",
-  };
-  return (
-    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-      {labels[level] ?? level}
-    </span>
-  );
-}
-
-function TypeBadge({ type }: { type: string }) {
-  const labels: Record<string, string> = {
-    PARTTIME: "Part-time",
-    CONTRACT: "Contract",
-    INTERN: "Internship",
-  };
-  return (
-    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
-      {labels[type] ?? type}
-    </span>
-  );
-}
-
-function formatSalary(job: JobListing): string {
-  const currency = job.salary_currency ?? "USD";
-  const period = job.salary_period ?? "year";
-  const periodLabel =
-    period === "hour" ? "/hr" : period === "month" ? "/mo" : "/yr";
-
-  const format = (amount: number) => {
-    if (amount >= 1000) {
-      return `$${(amount / 1000).toFixed(0)}k`;
-    }
-    return `$${amount.toFixed(0)}`;
-  };
-
-  if (job.salary_min != null && job.salary_max != null) {
-    if (job.salary_min === job.salary_max) {
-      return `${format(job.salary_min)} ${currency}${periodLabel}`;
-    }
-    return `${format(job.salary_min)} – ${format(job.salary_max)} ${currency}${periodLabel}`;
-  }
-  if (job.salary_min != null) {
-    return `${format(job.salary_min)}+ ${currency}${periodLabel}`;
-  }
-  if (job.salary_max != null) {
-    return `Up to ${format(job.salary_max)} ${currency}${periodLabel}`;
-  }
-  return "";
-}
-
-function formatDate(isoString: string): string {
-  try {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  } catch {
-    return isoString;
-  }
 }
