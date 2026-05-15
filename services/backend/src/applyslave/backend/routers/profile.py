@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import tempfile
 from pathlib import Path
@@ -15,13 +14,10 @@ from applyslave.applicator.llm import (
     LevelRecommender,
     ModelManager,
     ResumeExtractor,
-    VALID_LEVELS,
 )
 from applyslave.backend.dependencies import (
     get_data_dir,
     get_profile_store,
-    load_settings,
-    save_settings,
 )
 from applyslave.profile_store import (
     ParsedResume,
@@ -142,140 +138,33 @@ def _generate_variants(title: str) -> list[str]:
 async def recommended_levels(
     store: Annotated[ProfileStore, Depends(get_profile_store)],
 ) -> dict:
-    """Use the local LLM to classify which seniority levels the user qualifies for.
+    """Classify which seniority levels the user qualifies for.
 
-    Cached in settings.json keyed by a profile fingerprint, so we only re-run
-    the LLM (~90s on M3) when the profile actually changes.
+    Uses pure-Python rules (no LLM). Tried with the LLM first but the 4B-class
+    model couldn't reliably do the date arithmetic + rule application. This
+    runs in microseconds and matches the user's intuition more consistently.
     """
     profile = store.load_profile()
-    if not profile or not profile.experience:
+    if not profile:
         return {
             "recommended": ["entry", "mid"],
             "stretch": ["senior"],
             "off_target": ["intern", "lead"],
-            "reasoning": "No experience on file; defaulting to entry/mid.",
+            "reasoning": "No profile on file; defaulting to entry/mid.",
             "from_cache": False,
             "llm_used": False,
         }
 
-    fingerprint = _profile_fingerprint(profile)
-    cached = _load_cached_levels(fingerprint)
-    if cached is not None:
-        return {**cached, "from_cache": True, "llm_used": True}
-
-    llm_client = await _get_llm_client_or_none()
-    if llm_client is None:
-        return _heuristic_levels(profile, "Model not installed; using heuristic.")
-
-    try:
-        recommender = LevelRecommender(llm_client=llm_client)
-        result = await recommender.recommend(profile)
-        payload = {
-            "recommended": result.recommended,
-            "stretch": result.stretch,
-            "off_target": result.off_target,
-            "reasoning": result.reasoning,
-        }
-        _save_cached_levels(fingerprint, payload)
-        return {**payload, "from_cache": False, "llm_used": True}
-    except Exception as error:  # noqa: BLE001
-        logger.exception("Level recommendation failed; using heuristic")
-        return _heuristic_levels(profile, f"LLM failed: {error}")
-
-
-def _profile_fingerprint(profile: UserProfile) -> str:
-    """A short hash of the parts of the profile that affect level recommendation."""
-    import hashlib
-
-    payload = {
-        "experience": [
-            (exp.title, exp.start_date, exp.end_date) for exp in profile.experience
-        ],
-        "education": [
-            (edu.degree, edu.end_date) for edu in profile.education
-        ],
-    }
-    blob = json.dumps(payload, sort_keys=True).encode("utf-8")
-    return hashlib.sha1(blob).hexdigest()[:16]
-
-
-def _load_cached_levels(fingerprint: str) -> dict | None:
-    settings = load_settings()
-    cache = settings.get("level_recommendation_cache") or {}
-    if not isinstance(cache, dict):
-        return None
-    if cache.get("fingerprint") == fingerprint:
-        result = cache.get("result")
-        if isinstance(result, dict):
-            return result
-    return None
-
-
-def _save_cached_levels(fingerprint: str, payload: dict) -> None:
-    settings = load_settings()
-    settings["level_recommendation_cache"] = {
-        "fingerprint": fingerprint,
-        "result": payload,
-    }
-    save_settings(settings)
-
-
-def _heuristic_levels(profile: UserProfile, reason: str) -> dict:
-    """Fallback when the LLM can't run. Counts years of experience."""
-    total_years = _estimate_years(profile)
-
-    if total_years < 1:
-        recommended = ["intern", "entry"]
-        stretch = ["mid"]
-    elif total_years < 3:
-        recommended = ["entry", "mid"]
-        stretch = ["senior"]
-    elif total_years < 6:
-        recommended = ["mid", "senior"]
-        stretch = ["lead"]
-    else:
-        recommended = ["senior", "lead"]
-        stretch = ["mid"]
-
-    off_target = [level for level in VALID_LEVELS if level not in recommended and level not in stretch]
+    recommender = LevelRecommender()
+    result = await recommender.recommend(profile)
     return {
-        "recommended": recommended,
-        "stretch": stretch,
-        "off_target": off_target,
-        "reasoning": f"{reason} (~{total_years:.1f} years experience)",
+        "recommended": result.recommended,
+        "stretch": result.stretch,
+        "off_target": result.off_target,
+        "reasoning": result.reasoning,
         "from_cache": False,
         "llm_used": False,
     }
-
-
-def _estimate_years(profile: UserProfile) -> float:
-    """Crude experience-years estimate from start_date/end_date strings."""
-    from datetime import date
-
-    total_months = 0
-    for exp in profile.experience:
-        start = _parse_yyyy_mm(exp.start_date)
-        end = _parse_yyyy_mm(exp.end_date) or date.today()
-        if start and end > start:
-            months = (end.year - start.year) * 12 + (end.month - start.month)
-            total_months += max(0, months)
-    return total_months / 12
-
-
-def _parse_yyyy_mm(value: str | None):
-    from datetime import date
-
-    if not value:
-        return None
-    parts = value.strip().split("-")
-    try:
-        if len(parts) >= 2:
-            return date(int(parts[0]), int(parts[1]), 1)
-        if len(parts) == 1:
-            return date(int(parts[0]), 1, 1)
-    except (ValueError, IndexError):
-        return None
-    return None
 
 
 @router.post("", response_model=UserProfile)

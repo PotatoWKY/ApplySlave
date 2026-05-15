@@ -1,19 +1,32 @@
-"""LLM-powered seniority-level recommender.
+"""Seniority-level recommender — pure Python rules.
 
-Given a user's profile, decide which seniority levels they realistically
-qualify for. Output is a structured list:
-  - recommended: levels the user should target (default-checked in UI)
-  - stretch:     levels worth considering with strong stories (optional)
-  - off_target:  levels they're under- or over-qualified for
+We tried using the LLM for this and it kept getting basic arithmetic and
+rule application wrong. The task is small enough that hand-written rules
+beat a 4B-class LLM on accuracy, and they run in microseconds instead of
+~90 seconds.
 
-Cached in settings.json — only re-runs when the profile materially changes.
+The classifier is exposed under the same `LevelRecommender` name so the
+rest of the system doesn't care.
+
+Rules:
+  1. Compute effective years = sum of full-time roles + degree bonus.
+     Master's adds +1, PhD adds +3, internships don't count.
+  2. Map years to a primary level:
+       0-2 -> entry, 2-5 -> mid, 5-8 -> senior, 8+ -> lead
+     No full-time roles -> intern.
+  3. Title overrides:
+       "Staff", "Principal", "Director", "Lead Engineer" -> bump UP one
+       "Intern" only history -> primary = intern
+  4. Recommended = primary + level immediately below
+     Stretch     = level immediately above primary
+     Off-target  = the rest
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
+from datetime import date
 
 from applyslave.shared import LLMClient, UserProfile
 
@@ -21,62 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 VALID_LEVELS = ["intern", "entry", "mid", "senior", "lead"]
-
-
-LEVEL_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "recommended": {
-            "type": "array",
-            "items": {"type": "string", "enum": VALID_LEVELS},
-        },
-        "stretch": {
-            "type": "array",
-            "items": {"type": "string", "enum": VALID_LEVELS},
-        },
-        "off_target": {
-            "type": "array",
-            "items": {"type": "string", "enum": VALID_LEVELS},
-        },
-        "reasoning": {"type": "string"},
-    },
-    "required": ["recommended", "stretch", "off_target", "reasoning"],
-}
-
-
-_PROMPT_TEMPLATE = """You are an experienced tech recruiter helping a candidate
-decide which seniority levels to target when applying to jobs.
-
-Given the candidate's profile below, classify each of these seniority levels:
-  - intern: undergraduate / part-time student internships
-  - entry:  new grad, 0-2 years experience, "Software Engineer I"
-  - mid:    2-5 years experience, "Software Engineer II", "Senior" at small co
-  - senior: 5-8 years experience, "Senior" / "Sr. Software Engineer"
-  - lead:   8+ years, "Staff", "Principal", or team lead roles
-
-Output ONLY a JSON object:
-{{
-  "recommended": [<levels they should target>],
-  "stretch":     [<levels they could try but aren't a strong fit>],
-  "off_target":  [<levels they're clearly under- or over-qualified for>],
-  "reasoning":   "<one sentence explaining your call>"
-}}
-
-Each of the five levels must appear in exactly one of the three lists.
-
-Heuristics:
-- Count years from earliest start_date to most recent end_date (or today)
-- Recent or current role title weighs more than total years
-- A master's degree adds ~1 year of equivalent experience
-- "Lead", "Staff", "Principal" titles → recommend senior + lead
-- 0-2 years → recommend entry, stretch mid (not senior+)
-- Pure intern history → recommend intern + entry only
-- Be conservative: if unclear, prefer "stretch" over "recommended"
-
-Candidate profile:
-{profile_json}
-
-JSON:"""
+_LEVEL_ORDER = {level: index for index, level in enumerate(VALID_LEVELS)}
 
 
 @dataclass
@@ -89,65 +47,59 @@ class LevelRecommendation:
 
 @dataclass
 class LevelRecommender:
-    """Runs the LLM to classify which levels suit the user."""
+    """Rules-based level classifier.
 
-    llm_client: LLMClient
+    Takes an `LLMClient` arg for API symmetry with the rest of the system,
+    but doesn't use it. Kept as part of the constructor so swapping in a
+    real LLM-based implementation later is a single-file change.
+    """
+
+    llm_client: LLMClient | None = None
 
     async def recommend(self, profile: UserProfile) -> LevelRecommendation:
-        profile_payload = {
-            "experience": [
-                {
-                    "company": exp.company,
-                    "title": exp.title,
-                    "start_date": exp.start_date,
-                    "end_date": exp.end_date,
-                }
-                for exp in profile.experience
-            ],
-            "education": [
-                {
-                    "school": edu.school,
-                    "degree": edu.degree,
-                    "major": edu.major,
-                    "end_date": edu.end_date,
-                }
-                for edu in profile.education
-            ],
-            "skills_count": len(profile.skills),
-        }
-
-        prompt = _PROMPT_TEMPLATE.format(
-            profile_json=json.dumps(profile_payload, indent=2)
-        )
-
-        raw = await self.llm_client.chat_json(prompt, schema=LEVEL_SCHEMA)
-        logger.debug("Level LLM raw response: %s", raw)
-
-        return _payload_to_recommendation(raw)
+        return _classify(profile)
 
 
-def _payload_to_recommendation(payload: dict) -> LevelRecommendation:
-    """Validate + coerce the LLM output into a recommendation."""
-    recommended = _coerce_levels(payload.get("recommended", []))
-    stretch = _coerce_levels(payload.get("stretch", []))
-    off_target = _coerce_levels(payload.get("off_target", []))
-    reasoning = str(payload.get("reasoning", "")).strip()
+def _classify(profile: UserProfile) -> LevelRecommendation:
+    effective_years = _compute_effective_years(profile)
+    role_count = _count_full_time_roles(profile)
+    recent_title = _most_recent_title(profile) or ""
+    bumped_reason: str | None = None
 
-    # Defensive: ensure each level appears at most once across all lists.
-    seen: set[str] = set()
-    recommended = [
-        level for level in recommended if not (level in seen or seen.add(level))
-    ]
-    stretch = [
-        level for level in stretch if not (level in seen or seen.add(level))
-    ]
+    if role_count == 0:
+        primary = "intern"
+        years_note = "no full-time experience"
+    else:
+        primary = _years_to_level(effective_years)
+        years_note = f"{effective_years:.1f} effective years"
+
+        # Title overrides — only bump up for senior-track titles.
+        if _has_lead_title(recent_title):
+            new_primary = _bump_up(primary)
+            if new_primary != primary:
+                bumped_reason = (
+                    f"title '{recent_title}' implies higher seniority"
+                )
+                primary = new_primary
+
+    recommended = [primary]
+    below = _bump_down(primary)
+    if below != primary:
+        recommended = [below, primary]
+
+    stretch_level = _bump_up(primary)
+    stretch = [stretch_level] if stretch_level != primary else []
+
     off_target = [
-        level for level in off_target if not (level in seen or seen.add(level))
+        level
+        for level in VALID_LEVELS
+        if level not in recommended and level not in stretch
     ]
 
-    # Defensive: cover any missing level by putting it in off_target.
-    missing = [level for level in VALID_LEVELS if level not in seen]
-    off_target.extend(missing)
+    reasoning_parts = [f"primary = {primary} ({years_note})"]
+    if bumped_reason:
+        reasoning_parts.append(f"bumped up: {bumped_reason}")
+    reasoning = "; ".join(reasoning_parts)
 
     return LevelRecommendation(
         recommended=recommended,
@@ -157,12 +109,98 @@ def _payload_to_recommendation(payload: dict) -> LevelRecommendation:
     )
 
 
-def _coerce_levels(raw: object) -> list[str]:
-    """Filter to known level strings."""
-    if not isinstance(raw, list):
-        return []
-    return [
-        item.lower().strip()
-        for item in raw
-        if isinstance(item, str) and item.lower().strip() in VALID_LEVELS
-    ]
+def _years_to_level(years: float) -> str:
+    if years < 2:
+        return "entry"
+    if years < 5:
+        return "mid"
+    if years < 8:
+        return "senior"
+    return "lead"
+
+
+def _bump_up(level: str) -> str:
+    index = _LEVEL_ORDER[level]
+    return VALID_LEVELS[min(index + 1, len(VALID_LEVELS) - 1)]
+
+
+def _bump_down(level: str) -> str:
+    index = _LEVEL_ORDER[level]
+    return VALID_LEVELS[max(index - 1, 0)]
+
+
+def _has_lead_title(title: str) -> bool:
+    title_lower = title.lower()
+    return any(
+        keyword in title_lower
+        for keyword in (
+            "staff ",
+            "staff,",
+            "principal",
+            "director",
+            "lead engineer",
+            "head of",
+            "vp ",
+            "vice president",
+        )
+    )
+
+
+def _compute_effective_years(profile: UserProfile) -> float:
+    total_months = 0
+    for exp in profile.experience:
+        if _looks_like_internship(exp.title):
+            continue
+        start = _parse_yyyy_mm(exp.start_date)
+        end = _parse_yyyy_mm(exp.end_date) or date.today()
+        if start and end > start:
+            months = (end.year - start.year) * 12 + (end.month - start.month)
+            total_months += max(0, months)
+
+    bonus_years = 0.0
+    for edu in profile.education:
+        deg = (edu.degree or "").lower()
+        if "phd" in deg or "doctor" in deg or "ph.d" in deg:
+            bonus_years = max(bonus_years, 3.0)
+        elif any(kw in deg for kw in ("master", "msc", "ms ", "m.s.", "m.s ")):
+            bonus_years = max(bonus_years, 1.0)
+
+    return total_months / 12 + bonus_years
+
+
+def _count_full_time_roles(profile: UserProfile) -> int:
+    return sum(
+        1
+        for exp in profile.experience
+        if not _looks_like_internship(exp.title)
+    )
+
+
+def _most_recent_title(profile: UserProfile) -> str | None:
+    if not profile.experience:
+        return None
+    sorted_exp = sorted(
+        profile.experience,
+        key=lambda exp: exp.start_date or "",
+        reverse=True,
+    )
+    return sorted_exp[0].title if sorted_exp else None
+
+
+def _looks_like_internship(title: str) -> bool:
+    title_lower = title.lower()
+    return "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower
+
+
+def _parse_yyyy_mm(value: str | None) -> date | None:
+    if not value:
+        return None
+    parts = value.strip().split("-")
+    try:
+        if len(parts) >= 2:
+            return date(int(parts[0]), int(parts[1]), 1)
+        if len(parts) == 1:
+            return date(int(parts[0]), 1, 1)
+    except (ValueError, IndexError):
+        return None
+    return None

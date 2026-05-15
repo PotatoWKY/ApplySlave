@@ -338,7 +338,7 @@ function LevelFilter({
               }`}
               title={
                 tag === "rec"
-                  ? "AI recommended"
+                  ? "Recommended for your profile"
                   : tag === "stretch"
                     ? "Stretch — possible but not a strong fit"
                     : "Off-target — likely under/over qualified"
@@ -358,7 +358,7 @@ function LevelFilter({
       </div>
       {levels?.reasoning && (
         <div className="mt-1.5 text-xs text-slate-500">
-          AI: {levels.reasoning}
+          {levels.reasoning}
         </div>
       )}
     </div>
