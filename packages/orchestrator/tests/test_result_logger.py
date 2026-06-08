@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from applyslave.orchestrator import ResultLogger
-from applyslave.shared import ApplicationRecord, ApplicationStatus
+from hamster.orchestrator import ResultLogger
+from hamster.shared import ApplicationRecord, ApplicationStatus
 
 
 def test_insert_and_list_applications(tmp_path: Path) -> None:

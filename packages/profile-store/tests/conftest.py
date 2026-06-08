@@ -13,7 +13,7 @@ import pytest
 
 @pytest.fixture
 def data_dir(tmp_path: Path) -> Path:
-    return tmp_path / "ApplySlave"
+    return tmp_path / "Hamster"
 
 
 @pytest.fixture

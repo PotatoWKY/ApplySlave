@@ -6,7 +6,7 @@
 
 ## 一、重新定位
 
-v2 的 ApplySlave 不再跟 AIHawk 直接竞争（AIHawk 是 LinkedIn Easy Apply 工具）。新的竞争维度：
+v2 的 Hamster 不再跟 AIHawk 直接竞争（AIHawk 是 LinkedIn Easy Apply 工具）。新的竞争维度：
 
 1. **合规、零封号风险** vs AIHawk 的 LinkedIn ToS 违规
 2. **原生 Mac App 体验** vs 所有现有工具的 Chrome 扩展 / CLI 形态
@@ -74,7 +74,7 @@ AIHawk 技术路线本质问题：
 
 ---
 
-## 四、ApplySlave v2 的独特定位
+## 四、Hamster v2 的独特定位
 
 ```
 合规的 ATS API（零封号风险）
@@ -87,7 +87,7 @@ AIHawk 技术路线本质问题：
 
 ### 4.1 对标矩阵
 
-| 维度 | AIHawk | Apply Bot | JobCopilot | **ApplySlave v2** |
+| 维度 | AIHawk | Apply Bot | JobCopilot | **Hamster v2** |
 |------|--------|-----------|------------|-------------------|
 | 合规 | ❌ 违反 LinkedIn ToS | ⚠️ 看 LLM 操作 | ✅ | ✅ 用公开 API |
 | 封号风险 | 高 | 中 | 低 | **零** |

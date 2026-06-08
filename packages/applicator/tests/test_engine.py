@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from applyslave.applicator import ApplicatorEngine
-from applyslave.applicator.browser import BrowserManager
-from applyslave.shared import (
+from hamster.applicator import ApplicatorEngine
+from hamster.applicator.browser import BrowserManager
+from hamster.shared import (
     ApplicationStatus,
     PageAnalysis,
     PageDOM,
@@ -54,6 +54,8 @@ async def test_engine_runs_on_fixture_form(
         browser=browser,
         page_analyzer=_AlwaysConfirmedAnalyzer(),
         dry_run=False,  # this test verifies the live submit path
+        wild_mode=True,  # fixture form has unmapped fields (conf 0.6); wild
+        # mode bypasses the submit confidence gate so we reach the click.
     )
     result = await engine.apply(apply_form_url, profile)
 
@@ -105,3 +107,63 @@ async def test_engine_dry_run_stops_before_submit(
     shots = list(screenshot_dir.glob("*.png"))
     assert len(shots) == 1
     assert shots[0].stat().st_size > 0
+
+
+async def test_engine_blocks_live_submit_below_confidence(
+    browser: BrowserManager, apply_form_url: str, tmp_path: Path
+) -> None:
+    """Live submit (dry_run=False) must stop for review when mapping
+    confidence is below the safety threshold and wild mode is off.
+
+    The fixture form has unmapped fields (experience/cover letter/sponsorship),
+    so the rule-based mapper reports confidence 0.6 < 0.8 threshold.
+    """
+    resume = tmp_path / "resume.pdf"
+    resume.write_bytes(b"%PDF-1.4\n%EOF\n")
+
+    profile = UserProfile(
+        first_name="Low",
+        last_name="Confidence",
+        email="low@example.com",
+        resume_path=str(resume),
+    )
+
+    engine = ApplicatorEngine(
+        browser=browser,
+        page_analyzer=_AlwaysFormAnalyzer(),
+        dry_run=False,
+        wild_mode=False,
+    )
+    result = await engine.apply(apply_form_url, profile)
+
+    assert result.status is ApplicationStatus.NEEDS_REVIEW
+    assert result.intervention_reason == "BELOW_SUBMIT_THRESHOLD"
+    assert result.success is False
+
+
+async def test_engine_wild_mode_submits_below_confidence(
+    browser: BrowserManager, apply_form_url: str, tmp_path: Path
+) -> None:
+    """Wild mode bypasses the confidence gate and submits regardless."""
+    resume = tmp_path / "resume.pdf"
+    resume.write_bytes(b"%PDF-1.4\n%EOF\n")
+
+    profile = UserProfile(
+        first_name="Wild",
+        last_name="Mode",
+        email="wild@example.com",
+        resume_path=str(resume),
+    )
+
+    engine = ApplicatorEngine(
+        browser=browser,
+        page_analyzer=_AlwaysConfirmedAnalyzer(),
+        dry_run=False,
+        wild_mode=True,
+    )
+    result = await engine.apply(apply_form_url, profile)
+
+    # Same as the live-submit test: wild mode reaches the click and the
+    # fixture confirms on the next step.
+    assert result.status is ApplicationStatus.SUBMITTED
+    assert result.success is True

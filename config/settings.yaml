@@ -41,4 +41,4 @@ anti_detection:
 
 logging:
   level: "DEBUG"           # DEBUG / INFO / WARNING / ERROR
-  file: "data/apply-slave.log"
+  file: "data/hamster.log"

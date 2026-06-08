@@ -19,7 +19,7 @@
 前端和后端的数据模型对应关系，通过手写或自动生成保持同步：
 
 ```typescript
-// apps/applyslave-desktop/src/types/api.ts
+// apps/hamster-desktop/src/types/api.ts
 
 export interface UserProfile {
     id: number;
@@ -344,7 +344,7 @@ export interface Application {
 
 **前端连接代码**：
 ```typescript
-// apps/applyslave-desktop/src/services/websocket.ts
+// apps/hamster-desktop/src/services/websocket.ts
 import { invoke } from '@tauri-apps/api/core';
 
 const port = await invoke<number>('backend_port');

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from applyslave.orchestrator import (
+from hamster.orchestrator import (
     ApplicationOrchestrator,
     JobTask,
     ResultLogger,
 )
-from applyslave.shared import ApplicationStatus, ApplyResult, UserProfile
+from hamster.shared import ApplicationStatus, ApplyResult, UserProfile
 
 
 class _StubApplicator:

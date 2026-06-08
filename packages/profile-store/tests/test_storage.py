@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from applyslave.profile_store import ProfileStore
-from applyslave.shared import Education, Experience, UserProfile
+from hamster.profile_store import ProfileStore
+from hamster.shared import Education, Experience, UserProfile
 
 
 def _sample_profile() -> UserProfile:

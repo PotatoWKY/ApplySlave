@@ -30,7 +30,7 @@
 
 ### Phase 1.0 Monorepo 脚手架（2 天）
 
-**目标**：`uv sync` 能成功安装所有 workspace packages，`uv run applyslave --help` 显示 CLI。
+**目标**：`uv sync` 能成功安装所有 workspace packages，`uv run hamster --help` 显示 CLI。
 
 **任务**：
 - 初始化 uv workspace（根 `pyproject.toml`）
@@ -46,7 +46,7 @@
 
 **验收**：
 - `uv sync` 成功
-- `uv run applyslave --help` 返回帮助信息
+- `uv run hamster --help` 返回帮助信息
 - `uv run pytest` 能跑起来
 
 ---
@@ -110,7 +110,7 @@
 - `sources/companies.yaml`：要搜索的公司列表（初期 50-100 家 tech 公司）
 
 **验收**：
-- `applyslave discover --keywords "engineer" --location "remote"` 返回真实职位
+- `hamster discover --keywords "engineer" --location "remote"` 返回真实职位
 - 每个 source 单元测试（mock HTTP）+ 集成测试（真实 API）
 
 ---
@@ -153,7 +153,7 @@
 - 强制 JSON 输出
 
 **验收**：
-- `uv run applyslave llm-test`：输入 prompt 返回 JSON
+- `uv run hamster llm-test`：输入 prompt 返回 JSON
 - GPU 加速生效
 
 ---
@@ -189,11 +189,11 @@
 
 **命令**：
 ```bash
-applyslave profile import --pdf resume.pdf
-applyslave profile show
-applyslave discover --keywords engineer ...
-applyslave apply --batch latest
-applyslave status
+hamster profile import --pdf resume.pdf
+hamster profile show
+hamster discover --keywords engineer ...
+hamster apply --batch latest
+hamster status
 ```
 
 **验收**：
@@ -232,7 +232,7 @@ applyslave status
 ### Phase 3.1 Tauri + React 项目初始化（2 天）
 
 **任务**：
-- `pnpm create tauri-app` 创建 `apps/applyslave-desktop`
+- `pnpm create tauri-app` 创建 `apps/hamster-desktop`
 - 选择 React + TypeScript + Vite 模板
 - 配置 `tauri.conf.json`
 - 安装 Tailwind CSS + shadcn/ui
@@ -320,7 +320,7 @@ applyslave status
 **任务**：
 - 从 bundle 启动 Python 后端，确认所有依赖能找到
 - Playwright 的 Chromium 路径通过 `PLAYWRIGHT_BROWSERS_PATH` 正确解析
-- LLM 模型加载路径通过 `APPLYSLAVE_DATA_DIR`
+- LLM 模型加载路径通过 `HAMSTER_DATA_DIR`
 
 **三平台都测**。
 

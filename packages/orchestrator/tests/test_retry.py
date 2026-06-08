@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from applyslave.orchestrator import with_retry
+from hamster.orchestrator import with_retry
 
 
 async def test_retry_succeeds_after_transient_failure() -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from applyslave.job_discovery import apply_query_filters
-from applyslave.shared import JobListing, JobSourceName, SearchQuery
+from hamster.job_discovery import apply_query_filters
+from hamster.shared import JobListing, JobSourceName, SearchQuery
 
 
 def _listing(**overrides) -> JobListing:

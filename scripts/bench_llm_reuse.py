@@ -6,10 +6,10 @@ import asyncio
 import time
 from pathlib import Path
 
-from applyslave.applicator.llm import LLMClient, ModelManager, ResumeExtractor
+from hamster.applicator.llm import LLMClient, ModelManager, ResumeExtractor
 
 
-DATA_DIR = Path.home() / "Library" / "Application Support" / "ApplySlave"
+DATA_DIR = Path.home() / "Library" / "Application Support" / "Hamster"
 
 SHORT = "San Zhang\nsan@x.com\nSoftware Engineer at Stripe\nBS CS Tsinghua 2020\nPython, TypeScript"
 LONG = open(Path(__file__).parent / "_long_resume.txt").read() if (Path(__file__).parent / "_long_resume.txt").exists() else SHORT * 20

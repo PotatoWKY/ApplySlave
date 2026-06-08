@@ -10,11 +10,11 @@ import sys
 import time
 from pathlib import Path
 
-from applyslave.applicator.llm import LLMClient, ModelManager, ResumeExtractor
-from applyslave.profile_store import extract_text, parse_resume
+from hamster.applicator.llm import LLMClient, ModelManager, ResumeExtractor
+from hamster.profile_store import extract_text, parse_resume
 
 
-DATA_DIR = Path.home() / "Library" / "Application Support" / "ApplySlave"
+DATA_DIR = Path.home() / "Library" / "Application Support" / "Hamster"
 
 
 def _build_sample_pdf(path: Path) -> Path:

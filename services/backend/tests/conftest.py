@@ -1,6 +1,6 @@
 """Backend test fixtures.
 
-Each test gets a fresh temp data dir via APPLYSLAVE_DATA_DIR so SQLite state
+Each test gets a fresh temp data dir via HAMSTER_DATA_DIR so SQLite state
 doesn't leak across tests. We also clear the dependency caches between tests.
 """
 
@@ -14,17 +14,17 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from applyslave.backend.dependencies import (
+from hamster.backend.dependencies import (
     get_profile_store,
     get_result_logger,
 )
-from applyslave.backend.main import create_app
+from hamster.backend.main import create_app
 
 
 @pytest_asyncio.fixture
 async def backend_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
     # Redirect all persistence into the per-test tmp dir
-    os.environ["APPLYSLAVE_DATA_DIR"] = str(tmp_path)
+    os.environ["HAMSTER_DATA_DIR"] = str(tmp_path)
 
     # Bust the lru_caches so the fixture dir is picked up
     get_profile_store.cache_clear()

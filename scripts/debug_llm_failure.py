@@ -9,11 +9,11 @@ import asyncio
 import traceback
 from pathlib import Path
 
-from applyslave.applicator.llm import LLMClient, ModelManager, ResumeExtractor
-from applyslave.profile_store import extract_text
+from hamster.applicator.llm import LLMClient, ModelManager, ResumeExtractor
+from hamster.profile_store import extract_text
 
 
-DATA_DIR = Path.home() / "Library" / "Application Support" / "ApplySlave"
+DATA_DIR = Path.home() / "Library" / "Application Support" / "Hamster"
 RESUME_PATH = DATA_DIR / "resumes" / "main_resume.pdf"
 
 

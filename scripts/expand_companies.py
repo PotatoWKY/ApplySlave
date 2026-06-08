@@ -35,7 +35,7 @@ YAML_PATH = (
     / "packages"
     / "job-discovery"
     / "src"
-    / "applyslave"
+    / "hamster"
     / "job_discovery"
     / "companies.yaml"
 )
@@ -274,7 +274,7 @@ def write_yaml(verified: dict[str, list[str]]) -> None:
 
 async def main() -> int:
     async with httpx.AsyncClient(
-        headers={"User-Agent": "applyslave-expand/1.1"},
+        headers={"User-Agent": "hamster-expand/1.1"},
         follow_redirects=True,
     ) as client:
         print("Harvesting slugs from public sources…")

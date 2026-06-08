@@ -1,14 +1,14 @@
 [project]
-name = "applyslave-backend"
+name = "hamster-backend"
 version = "0.1.0"
-description = "FastAPI HTTP service exposing ApplySlave functionality to the desktop frontend"
+description = "FastAPI HTTP service exposing Hamster functionality to the desktop frontend"
 requires-python = ">=3.12"
 dependencies = [
-    "applyslave-shared",
-    "applyslave-profile-store",
-    "applyslave-job-discovery",
-    "applyslave-applicator",
-    "applyslave-orchestrator",
+    "hamster-shared",
+    "hamster-profile-store",
+    "hamster-job-discovery",
+    "hamster-applicator",
+    "hamster-orchestrator",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "websockets>=13",
@@ -16,14 +16,14 @@ dependencies = [
 ]
 
 [project.scripts]
-applyslave-backend = "applyslave.backend.main:run"
+hamster-backend = "hamster.backend.main:run"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/applyslave/backend"]
+packages = ["src/hamster/backend"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""

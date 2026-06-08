@@ -52,3 +52,32 @@ async def test_submit_skips_duplicate_in_flight(
     # so our de-dupe only skips already-in-progress or submitted.
     second_response = await backend_client.post("/api/applications", json=first)
     assert second_response.json()["accepted"] == 1
+
+
+async def test_submit_url_enqueues_into_same_queue(
+    backend_client: httpx.AsyncClient,
+) -> None:
+    response = await backend_client.post(
+        "/api/applications/url",
+        json={"url": "https://boards.greenhouse.io/acme/jobs/123"},
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["accepted"] is True
+    assert body["application"]["status"] == "queued"
+    assert body["application"]["company"] == "boards.greenhouse.io"
+    assert body["application"]["job"] is None
+
+    # It lands in the same list the worker polls and the UI shows.
+    list_response = await backend_client.get("/api/applications")
+    urls = {app["url"] for app in list_response.json()["applications"]}
+    assert "https://boards.greenhouse.io/acme/jobs/123" in urls
+
+
+async def test_submit_url_rejects_non_http(
+    backend_client: httpx.AsyncClient,
+) -> None:
+    response = await backend_client.post(
+        "/api/applications/url", json={"url": "ftp://nope"}
+    )
+    assert response.status_code == 422

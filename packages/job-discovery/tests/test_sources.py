@@ -12,14 +12,14 @@ from collections.abc import Callable
 
 import httpx
 import pytest
-
-from applyslave.job_discovery import (
+from hamster.job_discovery import (
     AshbySource,
     GreenhouseSource,
+    JSearchSource,
     LeverSource,
     WorkableSource,
 )
-from applyslave.shared import JobSourceName, SearchQuery
+from hamster.shared import JobSourceName, SearchQuery
 
 
 def _mock_client(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.AsyncClient:
@@ -165,6 +165,121 @@ async def test_workable_source_parses_listings() -> None:
     job = jobs[0]
     assert job.title == "Customer Success Engineer"
     assert str(job.url).startswith("https://apply.workable.com/testaircall/j/XYZ789")
+
+
+# --- JSearch --------------------------------------------------------------
+
+
+# v2 format: data is a dict with a "jobs" list.
+JSEARCH_V2_PAYLOAD = {
+    "data": {
+        "jobs": [
+            {
+                "job_id": "jsearch-id-001",
+                "job_title": "Senior Backend Engineer",
+                "employer_name": "TestCorp",
+                "job_apply_link": "https://testcorp.com/jobs/001/apply",
+                "job_city": "Seattle",
+                "job_state": "WA",
+                "job_country": "US",
+                "job_is_remote": False,
+                "job_posted_at_datetime_utc": "2026-02-10T10:00:00Z",
+                "job_description": "Build backend systems at scale.",
+                "job_min_salary": 150000,
+                "job_max_salary": 200000,
+                "job_salary_currency": "USD",
+                "job_salary_period": "YEAR",
+                "job_employment_type": "FULLTIME",
+            }
+        ]
+    }
+}
+
+
+async def test_jsearch_source_parses_listings() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "jsearch.p.rapidapi.com" in str(request.url)
+        # The API key must travel as the RapidAPI header on every request.
+        assert request.headers["x-rapidapi-key"] == "test-key"
+        return httpx.Response(200, json=JSEARCH_V2_PAYLOAD)
+
+    async with _mock_client(handler) as client:
+        source = JSearchSource(api_key="test-key", client=client)
+        jobs = await source.list_jobs(SearchQuery(keywords="backend engineer"))
+
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.source is JobSourceName.JSEARCH
+    assert job.title == "Senior Backend Engineer"
+    assert job.company == "TestCorp"
+    assert job.location == "Seattle, WA, US"
+    assert job.salary_min == 150000
+    assert job.salary_max == 200000
+    assert job.salary_currency == "USD"
+    assert job.salary_period == "year"
+    assert job.experience_level == "senior"  # inferred from "Senior" in title
+
+
+async def test_jsearch_source_parses_v1_list_format() -> None:
+    """v1 format returns ``data`` as a bare list rather than ``data.jobs``."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": JSEARCH_V2_PAYLOAD["data"]["jobs"]})
+
+    async with _mock_client(handler) as client:
+        source = JSearchSource(api_key="test-key", client=client)
+        jobs = await source.list_jobs(SearchQuery(keywords="backend"))
+
+    assert len(jobs) == 1
+    assert jobs[0].company == "TestCorp"
+
+
+async def test_jsearch_source_skips_jobs_missing_required_fields() -> None:
+    """A job with no apply link / title / company is dropped, not crashed on."""
+    payload = {
+        "data": [
+            {"job_id": "x", "job_title": "No Company Or Link"},
+            JSEARCH_V2_PAYLOAD["data"]["jobs"][0],
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    async with _mock_client(handler) as client:
+        source = JSearchSource(api_key="test-key", client=client)
+        jobs = await source.list_jobs(SearchQuery(keywords="engineer"))
+
+    assert len(jobs) == 1
+    assert jobs[0].company == "TestCorp"
+
+
+async def test_jsearch_source_returns_empty_on_blank_query() -> None:
+    """No keywords + no location means no search string, so no request fires."""
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=JSEARCH_V2_PAYLOAD)
+
+    async with _mock_client(handler) as client:
+        source = JSearchSource(api_key="test-key", client=client)
+        jobs = await source.list_jobs(SearchQuery())
+
+    assert jobs == []
+    assert calls == 0
+
+
+async def test_jsearch_source_returns_empty_on_http_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"message": "rate limited"})
+
+    async with _mock_client(handler) as client:
+        source = JSearchSource(api_key="test-key", client=client)
+        jobs = await source.list_jobs(SearchQuery(keywords="engineer"))
+
+    assert jobs == []
 
 
 # --- Failure isolation ----------------------------------------------------

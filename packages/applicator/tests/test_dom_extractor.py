@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from applyslave.applicator.browser import BrowserManager, DOMExtractor
-from applyslave.shared import ElementType
+from hamster.applicator.browser import BrowserManager, DOMExtractor
+from hamster.shared import ElementType
 
 
 async def test_extract_finds_all_form_fields(

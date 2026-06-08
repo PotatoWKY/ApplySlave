@@ -10,10 +10,10 @@ import sys
 import time
 from pathlib import Path
 
-from applyslave.applicator.llm import ModelManager
+from hamster.applicator.llm import ModelManager
 
 
-DATA_DIR = Path.home() / "Library" / "Application Support" / "ApplySlave"
+DATA_DIR = Path.home() / "Library" / "Application Support" / "Hamster"
 
 
 async def main() -> None:

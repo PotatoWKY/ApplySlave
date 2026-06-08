@@ -97,7 +97,7 @@ Apply Bot 是目前唯一采用 LLM + Playwright MCP 路线的产品：
 
 ## 四、对标矩阵：本项目 vs 竞品
 
-| 维度 | 本项目 (ApplySlave) | AIHawk | Apply Bot | 商业产品 |
+| 维度 | 本项目 (Hamster) | AIHawk | Apply Bot | 商业产品 |
 |------|-------------------|--------|-----------|---------|
 | **技术路线** | 硬编码入口 + LLM 通用适配 | 全硬编码 | 全 LLM 驱动 | 云端 AI / 扩展 |
 | **LinkedIn 支持** | ✅ 硬编码（稳定） | ✅ 硬编码（稳定） | ✅ LLM 驱动 | ✅ 平台适配 |
@@ -137,7 +137,7 @@ AIHawk 的稳定性（LinkedIn 硬编码）
     + Apply Bot 的通用性（LLM 驱动外部页面）
     + 本地模型的隐私性（数据不出机）
     + 状态机的可控性（确定性流程）
-    = ApplySlave 的独特价值
+    = Hamster 的独特价值
 ```
 
 ### 5.4 风险与挑战

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from applyslave.applicator.form_filler import RuleBasedPageAnalyzer
-from applyslave.shared import ElementType, PageDOM, PageElement, PageType
+from hamster.applicator.form_filler import RuleBasedPageAnalyzer
+from hamster.shared import ElementType, PageDOM, PageElement, PageType
 
 
 def _elem(**kw) -> PageElement:

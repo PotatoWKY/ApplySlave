@@ -1,1 +1,1 @@
-# ApplySlave - 简历自动投递机器人
+# Hamster - 简历自动投递机器人

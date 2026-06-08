@@ -12,12 +12,12 @@ members = [
 ]
 
 [tool.uv.sources]
-applyslave-shared = { workspace = true }
-applyslave-profile-store = { workspace = true }
-applyslave-job-discovery = { workspace = true }
-applyslave-applicator = { workspace = true }
-applyslave-orchestrator = { workspace = true }
-applyslave-backend = { workspace = true }
+hamster-shared = { workspace = true }
+hamster-profile-store = { workspace = true }
+hamster-job-discovery = { workspace = true }
+hamster-applicator = { workspace = true }
+hamster-orchestrator = { workspace = true }
+hamster-backend = { workspace = true }
 
 [dependency-groups]
 dev = [

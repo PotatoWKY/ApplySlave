@@ -1,4 +1,4 @@
-# ApplySlave v2 架构设计
+# Hamster v2 架构设计
 
 ## 一、最终形态
 
@@ -10,7 +10,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ApplySlave.app / .exe / .AppImage（~500MB）             │
+│  Hamster.app / .exe / .AppImage（~500MB）             │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐   │
@@ -56,9 +56,9 @@
 └─────────────────────────────────────────────────────────┘
 
 本地存储：
-  macOS:   ~/Library/Application Support/ApplySlave/
-  Windows: %APPDATA%/ApplySlave/
-  Linux:   ~/.config/ApplySlave/
+  macOS:   ~/Library/Application Support/Hamster/
+  Windows: %APPDATA%/Hamster/
+  Linux:   ~/.config/Hamster/
 
 ├── profile.db            SQLite（简历、偏好、投递历史）
 ├── resumes/              简历 PDF 文件
@@ -86,12 +86,12 @@
 
 ## 四、模块划分
 
-### 4.1 前端（`apps/applyslave-desktop/`）
+### 4.1 前端（`apps/hamster-desktop/`）
 
 Tauri 项目，TypeScript + React。
 
 ```
-apps/applyslave-desktop/
+apps/hamster-desktop/
 ├── src/                      # 前端源码（TypeScript + React）
 │   ├── main.tsx              # 入口
 │   ├── App.tsx               # 根组件
@@ -288,7 +288,7 @@ services/backend/
 ### 6.1 新用户首次使用
 
 ```
-1. 双击 ApplySlave.app（或 .exe）
+1. 双击 Hamster.app（或 .exe）
    → Tauri Rust shell 启动，读取系统 WebView
    → Rust 启动 Python 后端子进程（localhost:8765）
    → React 加载，检测本地是否有 LLM 模型
@@ -358,11 +358,11 @@ async fn pick_resume_file() -> Result<String, String> {
 
 | 平台 | 应用数据目录 |
 |------|------------|
-| macOS | `~/Library/Application Support/ApplySlave/` |
-| Windows | `%APPDATA%/ApplySlave/`（`C:\Users\<you>\AppData\Roaming\ApplySlave\`） |
-| Linux | `~/.config/ApplySlave/` |
+| macOS | `~/Library/Application Support/Hamster/` |
+| Windows | `%APPDATA%/Hamster/`（`C:\Users\<you>\AppData\Roaming\Hamster\`） |
+| Linux | `~/.config/Hamster/` |
 
-通过 Tauri 的 `@tauri-apps/api/path` 模块拿到跨平台路径，传给 Python 后端（环境变量 `APPLYSLAVE_DATA_DIR`）。
+通过 Tauri 的 `@tauri-apps/api/path` 模块拿到跨平台路径，传给 Python 后端（环境变量 `HAMSTER_DATA_DIR`）。
 
 ```
 <app_data_dir>/
@@ -373,7 +373,7 @@ async fn pick_resume_file() -> Result<String, String> {
 ├── models/
 │   └── qwen2.5-7b-instruct-q4.gguf    (~4GB)
 └── logs/
-    └── apply-slave.log
+    └── hamster.log
 ```
 
 ### 7.2 SQLite Schema（粗略）
@@ -476,7 +476,7 @@ dependencies = [
 Tauri 官方推荐用 **pnpm**（比 npm / yarn 快且节省磁盘）。
 
 ```
-apps/applyslave-desktop/
+apps/hamster-desktop/
 ├── package.json
 └── pnpm-lock.yaml
 ```

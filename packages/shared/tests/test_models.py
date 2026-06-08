@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from applyslave.shared import (
+from hamster.shared import (
     ApplicationRecord,
     ApplicationStatus,
     Education,

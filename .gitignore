@@ -206,29 +206,43 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# ApplySlave 项目特定
-data/session.json          # 浏览器登录 session（含 Cookie）
-data/applications.json     # 投递记录
-data/*.log                 # 运行日志
-data/*.png                 # 调试截图
-config/profile.yaml        # 用户简历数据（敏感信息）
-config/secrets.yaml        # 密码等敏感信息
-resume.pdf                 # 简历文件
-cover_letter.md            # 求职信
-.venv/                     # Python 虚拟环境
-config/secrets.yaml          # 登录凭证（绝对不能提交）
-data/chrome_profile/        # 浏览器用户数据（含登录状态）
+# 项目特定敏感数据（gitignore 不支持行内注释，注释必须独占一行）
+# 浏览器登录 session（含 Cookie）
+data/session.json
+# 投递记录
+data/applications.json
+# 运行日志
+data/*.log
+# 调试截图
+data/*.png
+# 浏览器用户数据目录（含登录状态）
+data/chrome_profile/
+data/*_browser_profile/
+data/dryrun_screenshots/
+# 用户简历数据（敏感 PII）
+config/profile.yaml
+# 登录凭证 / API key（绝对不能提交）
+config/secrets.yaml
+# 简历与求职信
+resume.pdf
+cover_letter.md
 
 # ---- v2 additions ----
 
 # uv workspace
 uv.lock
 
-# Frontend (apps/applyslave-desktop)
-apps/applyslave-desktop/node_modules/
-apps/applyslave-desktop/dist/
-apps/applyslave-desktop/src-tauri/target/
-apps/applyslave-desktop/src-tauri/gen/
+# Frontend (apps/hamster-desktop)
+apps/hamster-desktop/node_modules/
+apps/hamster-desktop/dist/
+apps/hamster-desktop/src-tauri/target/
+apps/hamster-desktop/src-tauri/gen/
 
 # Tauri bundle output
-apps/applyslave-desktop/src-tauri/bundle/
+apps/hamster-desktop/src-tauri/bundle/
+
+# PyInstaller sidecar binary（80MB，按需本地构建，不入库）
+apps/hamster-desktop/src-tauri/binaries/
+
+# macOS / 编辑器杂项
+.DS_Store

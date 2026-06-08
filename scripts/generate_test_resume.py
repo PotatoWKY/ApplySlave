@@ -3,7 +3,7 @@
 The persona is intentionally fictional with safe contact info:
   * @example.com is reserved by IANA — mail is discarded
   * +1-555-01XX is a reserved test exchange — no real phone gets dialed
-  * github.com/applyslave-test is an org we own / never receive submissions
+  * github.com/hamster-test is an org we own / never receive submissions
 
 Run: .venv/bin/python scripts/generate_test_resume.py
 Output: tests/fixtures/pat_apply_resume.pdf
@@ -32,18 +32,18 @@ PROFILE = {
     "headline": "Software Engineer · Test Persona",
     "email": "pat.apply@example.com",
     "phone": "+1-555-0100",
-    "linkedin": "linkedin.com/in/applyslave-test",
-    "github": "github.com/applyslave-test",
+    "linkedin": "linkedin.com/in/hamster-test",
+    "github": "github.com/hamster-test",
     "location": "Seattle, WA",
     "summary": (
-        "Fictional candidate used by the ApplySlave test suite. Contact "
+        "Fictional candidate used by the Hamster test suite. Contact "
         "details point to RFC-reserved domains and phone exchanges so "
         "automated submissions can never reach a real person."
     ),
     "experience": [
         {
             "title": "Software Engineer",
-            "company": "ApplySlave Test Co.",
+            "company": "Hamster Test Co.",
             "dates": "2024-06 - Present",
             "bullets": [
                 "Built fixture data for end-to-end test runs of the apply flow.",
@@ -105,7 +105,7 @@ def build() -> None:
         topMargin=0.6 * inch,
         bottomMargin=0.6 * inch,
         title="Pat Apply Resume",
-        author="ApplySlave test fixture",
+        author="Hamster test fixture",
     )
 
     styles = getSampleStyleSheet()

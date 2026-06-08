@@ -10,9 +10,9 @@
 
 | 平台 | 下载 | 安装 | 启动 |
 |------|------|------|------|
-| macOS | `ApplySlave.dmg` | 拖到 Applications | 双击 `.app` |
-| Windows | `ApplySlave.exe`（NSIS 安装器） | 跟随安装向导 | 开始菜单点击 |
-| Linux | `ApplySlave.AppImage` | 赋可执行权限 | 双击 |
+| macOS | `Hamster.dmg` | 拖到 Applications | 双击 `.app` |
+| Windows | `Hamster.exe`（NSIS 安装器） | 跟随安装向导 | 开始菜单点击 |
+| Linux | `Hamster.AppImage` | 赋可执行权限 | 双击 |
 
 首次启动统一：看到"正在下载 AI 模型..."进度条（~4GB），下载完成后进主界面。
 
@@ -23,11 +23,11 @@
 ## 二、`.app` bundle 结构（macOS）
 
 ```
-ApplySlave.app/
+Hamster.app/
 ├── Contents/
 │   ├── Info.plist
 │   ├── MacOS/
-│   │   └── ApplySlave                   # Rust 编译的 Tauri 二进制（~10MB）
+│   │   └── Hamster                   # Rust 编译的 Tauri 二进制（~10MB）
 │   ├── Resources/
 │   │   ├── assets/                      # 前端打包产物（HTML/CSS/JS）~5MB
 │   │   ├── python-runtime/              # ~50MB
@@ -41,7 +41,7 @@ ApplySlave.app/
 │   └── _CodeSignature/
 ```
 
-Windows 和 Linux 的产物结构类似，只是放在 `%APPDATA%` 或 `/opt/applyslave/` 路径。
+Windows 和 Linux 的产物结构类似，只是放在 `%APPDATA%` 或 `/opt/hamster/` 路径。
 
 **下载体积估算**：
 
@@ -156,7 +156,7 @@ fn start_python_backend(app_handle: &tauri::AppHandle) -> Result<Child, String> 
         ])
         .env("PYTHONPATH", site_packages)
         .env("PLAYWRIGHT_BROWSERS_PATH", chromium_path)
-        .env("APPLYSLAVE_DATA_DIR", app_data_dir)
+        .env("HAMSTER_DATA_DIR", app_data_dir)
         .spawn()
         .map_err(|error| format!("Failed to start Python backend: {}", error))
 }
@@ -220,9 +220,9 @@ ws.onmessage = (event) => {
 ```json
 {
     "$schema": "https://schema.tauri.app/config/2",
-    "productName": "ApplySlave",
+    "productName": "Hamster",
     "version": "0.1.0",
-    "identifier": "com.applyslave.app",
+    "identifier": "com.hamster.app",
     "build": {
         "beforeDevCommand": "pnpm dev",
         "beforeBuildCommand": "pnpm build",
@@ -232,7 +232,7 @@ ws.onmessage = (event) => {
     "app": {
         "windows": [
             {
-                "title": "ApplySlave",
+                "title": "Hamster",
                 "width": 1200,
                 "height": 800,
                 "minWidth": 800,
@@ -283,7 +283,7 @@ ws.onmessage = (event) => {
 
 ```bash
 # 在对应平台机器上运行
-cd apps/applyslave-desktop
+cd apps/hamster-desktop
 pnpm tauri build
 ```
 
@@ -313,7 +313,7 @@ packaging/
 #!/bin/bash
 set -euo pipefail
 
-RESOURCES_DIR="apps/applyslave-desktop/src-tauri/resources"
+RESOURCES_DIR="apps/hamster-desktop/src-tauri/resources"
 rm -rf "$RESOURCES_DIR"
 mkdir -p "$RESOURCES_DIR"
 
@@ -390,7 +390,7 @@ jobs:
 
       - name: Install frontend deps
         run: pnpm install
-        working-directory: apps/applyslave-desktop
+        working-directory: apps/hamster-desktop
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -401,18 +401,18 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          projectPath: apps/applyslave-desktop
+          projectPath: apps/hamster-desktop
           tagName: ${{ github.ref_name }}
-          releaseName: 'ApplySlave ${{ github.ref_name }}'
+          releaseName: 'Hamster ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
 ```
 
 一次 `git push --tags`，自动产出：
-- `ApplySlave_aarch64.dmg`（Apple Silicon Mac）
-- `ApplySlave_x64.dmg`（Intel Mac）
-- `ApplySlave_x64-setup.exe`（Windows）
-- `ApplySlave_amd64.AppImage`（Linux）
+- `Hamster_aarch64.dmg`（Apple Silicon Mac）
+- `Hamster_x64.dmg`（Intel Mac）
+- `Hamster_x64-setup.exe`（Windows）
+- `Hamster_amd64.AppImage`（Linux）
 
 ---
 
@@ -466,7 +466,7 @@ Tauri 2.x 有官方内置的 updater 插件，不需要第三方（比如 Sparkl
         "updater": {
             "active": true,
             "endpoints": [
-                "https://github.com/your/applyslave/releases/latest/download/latest.json"
+                "https://github.com/your/hamster/releases/latest/download/latest.json"
             ],
             "dialog": true,
             "pubkey": "YOUR_PUBLIC_KEY_HERE"
@@ -522,7 +522,7 @@ if (update?.available) {
 - [ ] 退出清理：关窗口时 Python 子进程也退出
 - [ ] 浏览器自动化：能打开 bundle 里的 Chromium 完成投递
 - [ ] 代码签名（macOS / Windows）：系统安全检查不弹警告
-- [ ] 公证（macOS）：`spctl --assess --verbose ApplySlave.app` 通过
+- [ ] 公证（macOS）：`spctl --assess --verbose Hamster.app` 通过
 - [ ] 自动更新：从 v1.0.0 升到 v1.0.1 不出错
 - [ ] 卸载干净：删除应用和数据目录，无残留
 - [ ] Intel Mac / Apple Silicon 都能跑（macOS）

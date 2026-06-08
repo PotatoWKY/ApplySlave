@@ -6,10 +6,10 @@ import asyncio
 import time
 from pathlib import Path
 
-from applyslave.applicator.llm import LLMClient, ModelManager, ResumeExtractor
+from hamster.applicator.llm import LLMClient, ModelManager, ResumeExtractor
 
 
-DATA_DIR = Path.home() / "Library" / "Application Support" / "ApplySlave"
+DATA_DIR = Path.home() / "Library" / "Application Support" / "Hamster"
 
 
 SHORT_RESUME = """\

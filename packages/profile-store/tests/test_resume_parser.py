@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from applyslave.profile_store import parse_resume
+from hamster.profile_store import parse_resume
 
 
 def test_parse_resume_extracts_common_fields(sample_resume_pdf: Path) -> None:

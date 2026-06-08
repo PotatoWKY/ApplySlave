@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import asyncio
 
-from applyslave.job_discovery import GreenhouseSource
-from applyslave.shared import SearchQuery
+from hamster.job_discovery import GreenhouseSource
+from hamster.shared import SearchQuery
 
 
 async def main() -> None:

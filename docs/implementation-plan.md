@@ -23,7 +23,7 @@
 1. 初始化项目结构：
 
 ```
-apply-slave/
+hamster/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py

@@ -1,4 +1,4 @@
-# ApplySlave
+# Hamster
 
 Filling out the same form 200 times is not a job. It's a bug in the hiring process.
 
@@ -9,7 +9,7 @@ no API keys required.
 
 ## Quick start (end user)
 
-1. Download `applyslave-desktop_0.1.0_aarch64.dmg`
+1. Download `hamster-desktop_0.1.0_aarch64.dmg`
 2. Drag to Applications
 3. First launch: macOS will say "can't verify developer" → go to **System Settings → Privacy & Security → Open Anyway**
 4. App opens → upload your resume → AI extracts everything locally → start discovering jobs
@@ -26,22 +26,22 @@ No accounts needed. No data leaves your machine.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ ApplySlave.app (.dmg, 83MB)                         │
+│ Hamster.app (.dmg, 83MB)                         │
 │                                                     │
-│  applyslave-desktop (9.9MB)    Tauri 2 + React      │
+│  hamster-desktop (9.9MB)    Tauri 2 + React      │
 │       │ spawns                                      │
 │       ▼                                             │
-│  applyslave-backend (80MB)     PyInstaller binary   │
+│  hamster-backend (80MB)     PyInstaller binary   │
 │       │ contains                                    │
 │       ├── FastAPI server (localhost:8765)            │
 │       ├── 4 ATS clients (Greenhouse/Lever/Ashby/WK) │
 │       ├── llama-cpp-python (Metal GPU)              │
 │       └── Playwright (for form submission)          │
 │                                                     │
-│  ~/Library/Application Support/ApplySlave/          │
+│  ~/Library/Application Support/Hamster/          │
 │       ├── models/qwen3-4b-instruct-*.gguf (2.3GB)  │
 │       ├── resumes/                                  │
-│       └── applyslave.db (SQLite)                    │
+│       └── hamster.db (SQLite)                    │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -76,7 +76,7 @@ services/
 └── backend/         # FastAPI HTTP/WebSocket service
 
 apps/
-└── applyslave-desktop/
+└── hamster-desktop/
     ├── src/              # React pages (Profile, Discover, Applications)
     └── src-tauri/
         ├── src/          # Rust shell (subprocess management, cleanup)
@@ -105,13 +105,13 @@ scripts/
 
 ```bash
 uv sync --all-packages
-cd apps/applyslave-desktop && pnpm install && cd -
+cd apps/hamster-desktop && pnpm install && cd -
 ```
 
 ### Run in dev mode
 
 ```bash
-cd apps/applyslave-desktop
+cd apps/hamster-desktop
 pnpm tauri dev
 ```
 
@@ -127,7 +127,7 @@ uv run pytest   # all packages
 ### Run backend standalone
 
 ```bash
-uv run applyslave-backend --port 8765
+uv run hamster-backend --port 8765
 ```
 
 ## Packaging (build a .dmg)
@@ -136,22 +136,22 @@ Three steps:
 
 ```bash
 # 1. Build the Python backend as a standalone binary
-.venv/bin/pyinstaller applyslave-backend.spec --noconfirm
+.venv/bin/pyinstaller hamster-backend.spec --noconfirm
 
 # 2. Copy to Tauri's sidecar directory
-cp dist/applyslave-backend apps/applyslave-desktop/src-tauri/binaries/applyslave-backend-aarch64-apple-darwin
+cp dist/hamster-backend apps/hamster-desktop/src-tauri/binaries/hamster-backend-aarch64-apple-darwin
 
 # 3. Build the Tauri app bundle
-cd apps/applyslave-desktop
+cd apps/hamster-desktop
 pnpm tauri build
 ```
 
-Output: `apps/applyslave-desktop/src-tauri/target/release/bundle/dmg/applyslave-desktop_0.1.0_aarch64.dmg` (~83MB)
+Output: `apps/hamster-desktop/src-tauri/target/release/bundle/dmg/hamster-desktop_0.1.0_aarch64.dmg` (~83MB)
 
 ### What's in the .dmg
 
-- `applyslave-desktop` (Tauri shell, 9.9MB) — manages window + spawns backend
-- `applyslave-backend` (PyInstaller binary, 80MB) — Python + FastAPI + all deps bundled
+- `hamster-desktop` (Tauri shell, 9.9MB) — manages window + spawns backend
+- `hamster-backend` (PyInstaller binary, 80MB) — Python + FastAPI + all deps bundled
 
 ### No code signing (current state)
 
@@ -166,7 +166,7 @@ To sign for public distribution: requires Apple Developer ID ($99/year) + `codes
 
 | Event | What happens |
 | --- | --- |
-| App opens | Tauri spawns `applyslave-backend` as a child process |
+| App opens | Tauri spawns `hamster-backend` as a child process |
 | Red × / Cmd+Q / Dock Quit | Tauri sends SIGTERM to backend process group → backend dies |
 | App force-quit (Activity Monitor) | Backend's parent-pid watchdog detects Tauri is gone → self-exits within 3s |
 | Stale port on next launch | Tauri POSTs `/api/system/shutdown` to evict the old process before spawning new |
@@ -176,14 +176,13 @@ To sign for public distribution: requires Apple Developer ID ($99/year) + `codes
 The app uses **Qwen3-4B-Instruct** (Q4_K_M quantization, ~2.3GB) for resume parsing.
 Runs locally on Apple Metal GPU. First inference ~30s (shader compilation), subsequent ~5-10s.
 
-Model location: `~/Library/Application Support/ApplySlave/models/`
+Model location: `~/Library/Application Support/Hamster/models/`
 
 Download: triggered automatically on first resume upload, or manually via `POST /api/model/download`.
 
 ## What's next
 
-- **JSearch integration** (broader job coverage — see below)
-- **Auto-apply pipeline**: wire the Playwright form-filler to actually submit applications
+- **Live submission**: the apply pipeline is wired end-to-end (queue → worker → Playwright form-fill → screenshot) but stops at a dry-run gate; flipping it to actually click submit still needs pre-submit confirmation-page verification and per-application approval
 - **More ATS adapters**: Microsoft/Amazon/Meta careers pages (custom, not public ATS)
 - **Windows/Linux builds**: same architecture, just need PyInstaller cross-compile + different Tauri target triples
 
@@ -199,7 +198,7 @@ The 603 companies in our local list are mostly tech companies (sourced from SWE 
 2. Sign up for a RapidAPI account (Google/GitHub login works)
 3. Subscribe to the "Basic" plan (free, 200 requests/month)
 4. Copy your API key from the page (`X-RapidAPI-Key: xxxxxxxx`)
-5. Paste it into the app's Settings page (TODO: not yet implemented in UI)
+5. Paste it into the app's Settings page → JSearch section (stored locally in `settings.json`)
 
 ### What it covers that our local list doesn't
 

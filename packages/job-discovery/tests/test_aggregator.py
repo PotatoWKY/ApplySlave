@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from applyslave.job_discovery import DiscoveryAggregator, load_default_companies
-from applyslave.shared import JobListing, JobSourceName, SearchQuery
+from hamster.job_discovery import DiscoveryAggregator, load_default_companies
+from hamster.shared import JobListing, JobSourceName, SearchQuery
 
 
 class _StaticSource:

@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from applyslave.applicator.browser import (
+from hamster.applicator.browser import (
     ActionError,
     ActionExecutor,
     BrowserManager,
 )
-from applyslave.shared import ActionType, PageAction
+from hamster.shared import ActionType, PageAction
 
 
 async def test_fill_and_submit(

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from applyslave.applicator.form_filler import FormMapper
-from applyslave.applicator.llm import StaticLLMClient
-from applyslave.shared import (
+from hamster.applicator.form_filler import FormMapper
+from hamster.applicator.llm import StaticLLMClient
+from hamster.shared import (
     ActionType,
     ElementType,
     PageDOM,
@@ -109,3 +109,43 @@ async def test_llm_fallback_fills_unmapped_fields() -> None:
     assert values["#why"] == "Great mission, strong team."
     # Deterministic + LLM should combine without duplicating existing selectors
     assert len(plan.actions) == len({a.selector for a in plan.actions})
+
+
+async def test_merge_confidence_reflects_fill_ratio_not_min() -> None:
+    """When the LLM covers every field the rules left, confidence should be
+    high — not capped at the rule-base floor (the old min() bug).
+
+    The DOM's only unmapped field is the #why textarea; the LLM fills it, so
+    after merge nothing is unmapped and every fillable field has an action.
+    """
+    canned_llm_output = {
+        "actions": [
+            {"type": "fill", "selector": "#why", "value": "Great mission."}
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.95,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned_llm_output))
+    plan = await mapper.plan(_dom(), _profile())
+
+    assert not plan.unmapped_fields
+    # Every fillable field is covered → confidence is 1.0, well above the old
+    # min(0.6, 0.95) = 0.6 that the bug produced.
+    assert plan.confidence == 1.0
+
+
+async def test_merge_confidence_partial_when_fields_remain() -> None:
+    """If the LLM leaves a field unmapped, confidence is the fill ratio,
+    strictly between 0 and 1 — proving it's computed, not just min()."""
+    canned_llm_output = {
+        "actions": [],
+        "unmapped_fields": ["Why do you want to work here?"],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned_llm_output))
+    plan = await mapper.plan(_dom(), _profile())
+
+    # One field still unmapped out of the fillable set → ratio < 1.0
+    assert 0.0 < plan.confidence < 1.0

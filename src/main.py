@@ -1,4 +1,4 @@
-"""ApplySlave — 简历自动投递机器人
+"""Hamster — 简历自动投递机器人
 
 用法：
     .venv/bin/python -m src.main          # 正常运行（投递）
@@ -33,7 +33,7 @@ def setup_logging(settings: dict) -> None:
     """根据配置文件设置 loguru"""
     log_cfg = settings.get("logging", {})
     level = log_cfg.get("level", "INFO")
-    log_file = log_cfg.get("file", "data/apply-slave.log")
+    log_file = log_cfg.get("file", "data/hamster.log")
 
     logger.remove()  # 移除默认 handler
     logger.add(

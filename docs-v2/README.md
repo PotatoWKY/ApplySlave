@@ -1,4 +1,4 @@
-# ApplySlave Docs v2
+# Hamster Docs v2
 
 > 架构第二版：从 LinkedIn 爬虫 pivot 到 ATS API + 跨平台桌面 App（Tauri）
 

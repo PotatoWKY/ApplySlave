@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from applyslave.applicator.llm import ResumeExtractor, StaticLLMClient
-from applyslave.shared import UserProfile
+from hamster.applicator.llm import ResumeExtractor, StaticLLMClient
+from hamster.shared import UserProfile
 
 
 def _llm_response() -> dict:
