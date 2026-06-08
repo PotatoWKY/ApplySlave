@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hamster.applicator.form_filler import RuleBasedPageAnalyzer
+from hamster.applicator.llm import StaticLLMClient
 from hamster.shared import ElementType, PageDOM, PageElement, PageType
 
 
@@ -8,6 +9,14 @@ def _elem(**kw) -> PageElement:
     base = dict(id="el", element_type=ElementType.INPUT_TEXT, selector="#x")
     base.update(kw)
     return PageElement(**base)  # type: ignore[arg-type]
+
+
+class _RaisingLLMClient:
+    """LLM client that always errors, to exercise the degrade-to-UNKNOWN path."""
+
+    async def chat_json(self, prompt: str, schema: dict | None = None) -> dict:
+        del prompt, schema
+        raise RuntimeError("model unavailable")
 
 
 async def test_login_detected_from_url() -> None:
@@ -46,3 +55,35 @@ async def test_unknown_fallback() -> None:
     dom = PageDOM(url="https://x/something", title="Browse")
     analysis = await RuleBasedPageAnalyzer().analyze(dom)
     assert analysis.page_type is PageType.UNKNOWN
+
+
+async def test_llm_fallback_classifies_when_rules_cannot() -> None:
+    dom = PageDOM(url="https://x/something", title="Browse")
+    llm = StaticLLMClient(
+        {
+            "page_type": "job_detail",
+            "confidence": 0.82,
+            "reasoning": "single posting with a description",
+        }
+    )
+    analysis = await RuleBasedPageAnalyzer(llm_client=llm).analyze(dom)
+    assert analysis.page_type is PageType.JOB_DETAIL
+    assert analysis.confidence == 0.82
+
+
+async def test_llm_failure_degrades_to_unknown() -> None:
+    dom = PageDOM(url="https://x/something", title="Browse")
+    analysis = await RuleBasedPageAnalyzer(
+        llm_client=_RaisingLLMClient()
+    ).analyze(dom)
+    assert analysis.page_type is PageType.UNKNOWN
+
+
+async def test_rules_win_without_calling_llm() -> None:
+    """A rule-classifiable page must not pay the LLM cost."""
+    llm = StaticLLMClient(
+        {"page_type": "captcha", "confidence": 1.0, "reasoning": "wrong"}
+    )
+    dom = PageDOM(url="https://example.com/login", title="Login")
+    analysis = await RuleBasedPageAnalyzer(llm_client=llm).analyze(dom)
+    assert analysis.page_type is PageType.LOGIN

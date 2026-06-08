@@ -6,11 +6,34 @@ the model when rules can't decide.
 
 from __future__ import annotations
 
-from hamster.shared import ElementType, PageAnalysis, PageDOM, PageType
+import logging
+from dataclasses import dataclass
+
+from hamster.applicator.llm import DefaultPromptBuilder
+from hamster.shared import (
+    ElementType,
+    LLMClient,
+    PageAnalysis,
+    PageDOM,
+    PageType,
+)
+
+logger = logging.getLogger(__name__)
 
 
+@dataclass
 class RuleBasedPageAnalyzer:
-    """Fast, deterministic page classifier using DOM heuristics only."""
+    """Page classifier: DOM heuristics first, optional LLM fallback.
+
+    The rules are cheap and cover the common, well-structured ATS pages.
+    When they can't decide (`analyze_sync` returns None) and an `llm_client`
+    was provided, the model classifies the page instead; without a client, or
+    if the model errors, we degrade to UNKNOWN — so behavior is unchanged when
+    no LLM is wired in.
+    """
+
+    llm_client: LLMClient | None = None
+    prompt_builder: DefaultPromptBuilder | None = None
 
     def analyze_sync(self, dom: PageDOM) -> PageAnalysis | None:
         """Return an analysis, or None if rules can't classify the page."""
@@ -66,12 +89,30 @@ class RuleBasedPageAnalyzer:
         return None
 
     async def analyze(self, dom: PageDOM) -> PageAnalysis:
-        """Async wrapper to match the PageAnalyzer protocol."""
+        """Classify the page: rules first, LLM fallback, then UNKNOWN."""
         rule_based = self.analyze_sync(dom)
         if rule_based is not None:
             return rule_based
+
+        if self.llm_client is not None:
+            llm_result = await self._analyze_with_llm(dom)
+            if llm_result is not None:
+                return llm_result
+
         return PageAnalysis(
             page_type=PageType.UNKNOWN,
             confidence=0.3,
             reasoning="No matching rule",
         )
+
+    async def _analyze_with_llm(self, dom: PageDOM) -> PageAnalysis | None:
+        """Ask the model to classify the page. Returns None on any failure."""
+        assert self.llm_client is not None
+        builder = self.prompt_builder or DefaultPromptBuilder()
+        prompt = builder.build_page_analysis_prompt(dom)
+        try:
+            raw = await self.llm_client.chat_json(prompt)
+            return PageAnalysis.model_validate(raw)
+        except Exception as error:
+            logger.warning("LLM page analysis failed: %s", error)
+            return None

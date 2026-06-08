@@ -20,7 +20,7 @@ from pathlib import Path
 
 from hamster.applicator import ApplicatorEngine
 from hamster.applicator.browser import BrowserManager
-from hamster.applicator.form_filler import FormMapper
+from hamster.applicator.form_filler import FormMapper, RuleBasedPageAnalyzer
 from hamster.applicator.llm import LLMClient, ModelManager
 from hamster.backend.dependencies import (
     get_data_dir,
@@ -182,32 +182,35 @@ class ApplicatorWorker:
         self._browser = browser
 
         screenshots = data_dir / "screenshots"
+        llm_client = self._build_llm_client(data_dir)
         self._engine = ApplicatorEngine(
             browser=browser,
-            form_mapper=self._build_form_mapper(data_dir),
+            page_analyzer=RuleBasedPageAnalyzer(llm_client=llm_client),
+            form_mapper=FormMapper(llm_client=llm_client),
             dry_run=is_dry_run_enabled(),
             wild_mode=is_wild_mode_enabled(),
             screenshot_dir=screenshots,
         )
         return self._engine
 
-    def _build_form_mapper(self, data_dir: Path) -> FormMapper:
-        """Build a FormMapper, wiring in the local LLM if the model is present.
+    def _build_llm_client(self, data_dir: Path) -> LLMClient | None:
+        """Build one LLM client shared by page analysis and form mapping.
 
-        Without the LLM, the mapper only handles ~7 deterministic fields and
-        leaves everything else unmapped. With it, the LLM fallback fills the
-        open-ended / unusual fields a real ATS form has. If the model isn't
-        downloaded yet we degrade to the rule-based mapper rather than fail.
+        The model is ~2.3GB; loading it once and sharing it keeps a single
+        copy in GPU memory instead of one per consumer. Without it, page
+        analysis falls back to UNKNOWN and form mapping handles only the ~7
+        deterministic fields — both degrade gracefully rather than fail. If
+        the model isn't downloaded yet we return None.
         """
         manager = ModelManager(data_dir=data_dir)
         if not manager.is_installed():
             logger.info(
-                "LLM model not installed; form mapping is rule-based only "
-                "until the model is downloaded."
+                "LLM model not installed; page analysis and form mapping are "
+                "rule-based only until the model is downloaded."
             )
-            return FormMapper()
-        logger.info("Wiring local LLM into FormMapper from %s", manager.model_path)
-        return FormMapper(llm_client=LLMClient(model_path=manager.model_path))
+            return None
+        logger.info("Loading local LLM from %s", manager.model_path)
+        return LLMClient(model_path=manager.model_path)
 
     async def _broadcast(self, message: dict) -> None:
         try:
