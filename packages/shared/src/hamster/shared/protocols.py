@@ -65,7 +65,10 @@ class PromptBuilder(Protocol):
     def build_page_analysis_prompt(self, dom: PageDOM) -> str: ...
 
     def build_form_mapping_prompt(
-        self, dom: PageDOM, profile: UserProfile
+        self,
+        dom: PageDOM,
+        profile: UserProfile,
+        job: JobListing | None = None,
     ) -> str: ...
 
 
@@ -76,11 +79,23 @@ class PageAnalyzer(Protocol):
 
 @runtime_checkable
 class FormMapper(Protocol):
-    async def plan(self, dom: PageDOM, profile: UserProfile) -> FillPlan: ...
+    # job is optional so manual-URL applications (no JobListing) and the
+    # deterministic path keep working; it only feeds the LLM free-text pass.
+    async def plan(
+        self,
+        dom: PageDOM,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> FillPlan: ...
 
 
 @runtime_checkable
 class Applicator(Protocol):
     """High-level entry point: given a URL and profile, attempt to apply."""
 
-    async def apply(self, url: str, profile: UserProfile) -> ApplyResult: ...
+    async def apply(
+        self,
+        url: str,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> ApplyResult: ...

@@ -19,6 +19,7 @@ from hamster.shared import (
     ActionType,
     ElementType,
     FillPlan,
+    JobListing,
     LLMClient,
     PageAction,
     PageDOM,
@@ -51,14 +52,21 @@ class FormMapper:
     llm_client: LLMClient | None = None
     prompt_builder: DefaultPromptBuilder | None = None
 
-    async def plan(self, dom: PageDOM, profile: UserProfile) -> FillPlan:
+    async def plan(
+        self,
+        dom: PageDOM,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> FillPlan:
+        # job only feeds the LLM free-text/combobox pass; the deterministic
+        # name/email matching below is role-independent.
         deterministic_plan = self._deterministic(dom, profile)
 
         if not deterministic_plan.unmapped_fields or self.llm_client is None:
             return deterministic_plan
 
         builder = self.prompt_builder or DefaultPromptBuilder()
-        prompt = builder.build_form_mapping_prompt(dom, profile)
+        prompt = builder.build_form_mapping_prompt(dom, profile, job)
         try:
             raw = await self.llm_client.chat_json(prompt)
             llm_plan = FillPlan.model_validate(raw)

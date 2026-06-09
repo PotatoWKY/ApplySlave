@@ -5,10 +5,28 @@ from hamster.applicator.llm import StaticLLMClient
 from hamster.shared import (
     ActionType,
     ElementType,
+    JobListing,
+    JobSourceName,
     PageDOM,
     PageElement,
     UserProfile,
 )
+
+
+class _RecordingLLMClient:
+    """Captures the prompt it's given, returns a fixed empty-ish plan."""
+
+    def __init__(self) -> None:
+        self.prompt: str | None = None
+
+    async def chat_json(self, prompt: str, schema: dict | None = None) -> dict:
+        self.prompt = prompt
+        return {
+            "actions": [],
+            "unmapped_fields": [],
+            "confidence": 0.5,
+            "reasoning": "recorded",
+        }
 
 
 def _profile() -> UserProfile:
@@ -319,3 +337,59 @@ async def test_free_text_filled_from_profile() -> None:
     additional = next(a for a in plan.actions if a.selector == "#additional")
     assert "Python" in additional.value
     assert "Additional Information" not in plan.unmapped_fields
+
+
+async def test_job_context_reaches_the_llm_prompt() -> None:
+    """A JobListing passed to plan() must appear in the LLM prompt."""
+    recorder = _RecordingLLMClient()
+    dom = PageDOM(
+        url="https://x/apply",
+        title="Apply",
+        elements=[
+            PageElement(
+                id="el_0",
+                element_type=ElementType.TEXTAREA,
+                label="Why do you want this role?",
+                selector="#why",
+            ),
+        ],
+    )
+    job = JobListing(
+        id="gh-anthropic-1",
+        source=JobSourceName.GREENHOUSE,
+        company="Anthropic",
+        title="Software Engineer, Product",
+        url="https://job-boards.greenhouse.io/anthropic/jobs/1",
+        description_snippet="Build reliable systems.",
+    )
+    mapper = FormMapper(llm_client=recorder)
+    await mapper.plan(dom, _profile(), job)
+
+    assert recorder.prompt is not None
+    assert "Anthropic" in recorder.prompt
+    assert "Software Engineer, Product" in recorder.prompt
+    assert "Build reliable systems." in recorder.prompt
+
+
+async def test_no_job_keeps_prompt_role_free() -> None:
+    """Backward compat: without a job, no role context leaks into the prompt."""
+    recorder = _RecordingLLMClient()
+    dom = PageDOM(
+        url="https://x/apply",
+        title="Apply",
+        elements=[
+            PageElement(
+                id="el_0",
+                element_type=ElementType.TEXTAREA,
+                label="Why do you want this role?",
+                selector="#why",
+            ),
+        ],
+    )
+    mapper = FormMapper(llm_client=recorder)
+    await mapper.plan(dom, _profile())
+
+    assert recorder.prompt is not None
+    # The rules text mentions JOB CONTEXT; the actual block (Company: line)
+    # must be absent when no job is passed.
+    assert "Company: " not in recorder.prompt

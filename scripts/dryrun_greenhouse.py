@@ -26,7 +26,7 @@ from hamster.applicator.form_filler import FormMapper, RuleBasedPageAnalyzer
 from hamster.applicator.llm import LLMClient, ModelManager
 from hamster.backend.dependencies import get_data_dir, get_profile_store
 from hamster.job_discovery.sources.greenhouse import GreenhouseSource
-from hamster.shared import SearchQuery, UserProfile
+from hamster.shared import Education, Experience, JobListing, SearchQuery, UserProfile
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,8 +44,26 @@ SCREENSHOT_DIR = REPO_ROOT / "data" / "dryrun_screenshots"
 CANDIDATE_COMPANIES = ["anthropic", "stripe", "databricks", "figma", "ramp"]
 
 
-async def _find_live_job_url() -> tuple[str, str, str] | None:
-    """Return (url, company, title) for the first live Greenhouse posting."""
+# The synthetic profile is a software engineer, so bias the demo toward a role
+# it can HONESTLY speak to. Applying a SWE persona to a Chief-of-Staff posting
+# would only show fields left blank — picking an eng role shows the LLM
+# tailoring real skills to the actual role.
+_ENG_TITLE_HINTS = ("engineer", "developer", "software", "swe", "backend",
+                    "frontend", "full stack", "full-stack", "infrastructure")
+
+
+def _looks_engineering(title: str) -> bool:
+    lowered = title.lower()
+    return any(hint in lowered for hint in _ENG_TITLE_HINTS)
+
+
+async def _find_live_job() -> tuple[str, JobListing] | None:
+    """Return (apply_url, JobListing) for a live Greenhouse posting.
+
+    Prefers an engineering role the synthetic SWE profile genuinely fits;
+    falls back to the first available job if no eng role is open.
+    """
+    first_job: JobListing | None = None
     for company in CANDIDATE_COMPANIES:
         source = GreenhouseSource(companies=[company])
         try:
@@ -55,9 +73,13 @@ async def _find_live_job_url() -> tuple[str, str, str] | None:
             await source.aclose()
             continue
         await source.aclose()
-        if jobs:
-            job = jobs[0]
-            return str(job.apply_url or job.url), job.company, job.title
+        for job in jobs:
+            if first_job is None:
+                first_job = job
+            if _looks_engineering(job.title):
+                return str(job.apply_url or job.url), job
+    if first_job is not None:
+        return str(first_job.apply_url or first_job.url), first_job
     return None
 
 
@@ -77,25 +99,74 @@ async def main() -> int:
             logger.error("No saved profile and resume fixture missing")
             return 1
         logger.info("No saved profile; using synthetic Pat Apply")
+        # Keep these fields in sync with PROFILE in generate_test_resume.py so
+        # the persona is consistent across the resume PDF and this demo. The
+        # experience/skills are what let the LLM write role-tailored free-text.
         profile = UserProfile(
             first_name="Pat",
             last_name="Apply",
             email="pat.apply@example.com",
             phone="+1-555-0100",
             location="Seattle, WA",
-            linkedin_url="https://linkedin.com/in/patapply",
-            github_url="https://github.com/patapply",
+            linkedin_url="https://linkedin.com/in/hamster-test",
+            github_url="https://github.com/hamster-test",
             resume_path=str(RESUME_FIXTURE),
+            education=[
+                Education(
+                    school="University of Washington",
+                    degree="B.S. Computer Science",
+                    major="Computer Science",
+                    start_date="2018-09",
+                    end_date="2022-06",
+                )
+            ],
+            experience=[
+                Experience(
+                    company="Hamster Test Co.",
+                    title="Software Engineer",
+                    description=(
+                        "Built fixture data and form-fill regression tests "
+                        "across Greenhouse, Lever, Ashby, and Workable boards."
+                    ),
+                    start_date="2024-06",
+                ),
+                Experience(
+                    company="Example Labs",
+                    title="Software Engineer",
+                    description=(
+                        "Owned a Python + FastAPI service for processing "
+                        "resume PDFs; built a headless-browser regression "
+                        "harness that cut flaky-test rate from 12% to 3%."
+                    ),
+                    start_date="2022-08",
+                    end_date="2024-05",
+                ),
+            ],
+            skills=[
+                "Python",
+                "TypeScript",
+                "React",
+                "FastAPI",
+                "Playwright",
+                "SQLite",
+                "Docker",
+                "Pytest",
+            ],
         )
 
     logger.info("Finding a live Greenhouse posting…")
-    found = await _find_live_job_url()
+    found = await _find_live_job()
     if found is None:
         logger.error("No live Greenhouse job found across %s", CANDIDATE_COMPANIES)
         return 1
-    url, company, title = found
-    logger.info("Target: %s @ %s", title, company)
+    url, job = found
+    logger.info("Target: %s @ %s", job.title, job.company)
     logger.info("URL: %s", url)
+    if job.description_snippet:
+        logger.info(
+            "Job description present (%d chars) — LLM will tailor answers",
+            len(job.description_snippet),
+        )
 
     # Wire in the local LLM if the model is present, so open-ended / custom
     # fields and dropdowns (the ones rule-based mapping can't touch) get
@@ -129,7 +200,7 @@ async def main() -> int:
     )
 
     try:
-        result = await engine.apply(url, profile)
+        result = await engine.apply(url, profile, job)
     finally:
         # Let the watcher see the final state for a moment before teardown.
         await asyncio.sleep(3)

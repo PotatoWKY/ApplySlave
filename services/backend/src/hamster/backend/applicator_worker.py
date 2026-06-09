@@ -122,7 +122,9 @@ class ApplicatorWorker:
         engine = await self._ensure_engine()
 
         try:
-            result = await engine.apply(url, profile)
+            # Pass the discovered JobListing so the LLM tailors free-text
+            # answers to the actual role; None for manually-pasted URLs.
+            result = await engine.apply(url, profile, record.job)
         except Exception as error:  # noqa: BLE001
             logger.exception("Engine crashed for %s", url)
             result = None

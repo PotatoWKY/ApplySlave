@@ -14,6 +14,7 @@ from hamster.job_discovery.sources.base import (
     infer_experience_level_from_title,
 )
 from hamster.shared import JobListing, JobSourceName
+from hamster.shared.text_utils import clean_job_description
 
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
 
@@ -43,6 +44,9 @@ class GreenhouseSource(ATSSource):
                 return None
             location = (raw.get("location") or {}).get("name")
             updated_at = raw.get("updated_at")
+            # The board API returns the full posting body under 'content'
+            # (HTML-escaped) because _fetch_company_jobs requests content=true.
+            # Clean + cap it here so the LLM form-filler has role context.
             return JobListing(
                 id=f"gh-{company}-{job_id}",
                 source=self.name,
@@ -51,6 +55,7 @@ class GreenhouseSource(ATSSource):
                 location=location,
                 url=url,
                 apply_url=url,
+                description_snippet=clean_job_description(raw.get("content")),
                 posted_at=datetime.fromisoformat(updated_at) if updated_at else None,
                 remote=_looks_remote(location),
                 experience_level=infer_experience_level_from_title(title),

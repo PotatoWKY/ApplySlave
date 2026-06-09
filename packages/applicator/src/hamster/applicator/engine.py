@@ -16,6 +16,7 @@ from hamster.applicator.form_filler import FormMapper, RuleBasedPageAnalyzer
 from hamster.shared import (
     ApplicationStatus,
     ApplyResult,
+    JobListing,
     PageAnalyzer,
     PageType,
     UserProfile,
@@ -56,7 +57,14 @@ class ApplicatorEngine:
         self._wild_mode = wild_mode
         self._screenshot_dir = screenshot_dir
 
-    async def apply(self, url: str, profile: UserProfile) -> ApplyResult:
+    async def apply(
+        self,
+        url: str,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> ApplyResult:
+        # job is request-scoped — passed per call, never stored on the engine,
+        # because the worker reuses one engine across many applications.
         page = await self._browser.new_page()
         try:
             await page.goto(url)
@@ -103,7 +111,7 @@ class ApplicatorEngine:
                         error=f"Unsupported page type: {analysis.page_type.value}",
                     )
 
-                plan = await self._form_mapper.plan(dom, profile)
+                plan = await self._form_mapper.plan(dom, profile, job)
                 if plan.confidence < 0.3:
                     return ApplyResult(
                         success=False,

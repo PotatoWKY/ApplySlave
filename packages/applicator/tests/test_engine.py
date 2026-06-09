@@ -10,6 +10,8 @@ from hamster.shared import (
     ActionType,
     ApplicationStatus,
     FillPlan,
+    JobListing,
+    JobSourceName,
     PageAction,
     PageAnalysis,
     PageDOM,
@@ -176,7 +178,12 @@ class _DoomedComboboxMapper:
     """Returns a plan whose combobox action can't be executed (bad value),
     so we can verify one failed action doesn't sink the whole application."""
 
-    async def plan(self, dom: PageDOM, profile: UserProfile) -> FillPlan:
+    async def plan(
+        self,
+        dom: PageDOM,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> FillPlan:
         return FillPlan(
             actions=[
                 PageAction(
@@ -225,3 +232,66 @@ async def test_engine_dry_run_surfaces_action_failures(
     assert "#relocation" in result.execution_failures[0]
     # Confidence is the plan's (0.95), unaffected by the execution failure.
     assert result.confidence == 0.95
+
+
+class _RecordingMapper:
+    """Captures the job argument apply() forwards to plan()."""
+
+    def __init__(self) -> None:
+        self.received_job: JobListing | None = None
+        self.called = False
+
+    async def plan(
+        self,
+        dom: PageDOM,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> FillPlan:
+        self.called = True
+        self.received_job = job
+        return FillPlan(
+            actions=[], unmapped_fields=[], confidence=0.95, reasoning="stub"
+        )
+
+
+async def test_engine_forwards_job_to_mapper(
+    browser: BrowserManager, apply_form_url: str, tmp_path: Path
+) -> None:
+    """apply(url, profile, job) must hand the job to form_mapper.plan."""
+    profile = UserProfile(first_name="Pat", last_name="Apply", email="p@example.com")
+    job = JobListing(
+        id="gh-x-1",
+        source=JobSourceName.GREENHOUSE,
+        company="Anthropic",
+        title="Software Engineer",
+        url="https://job-boards.greenhouse.io/anthropic/jobs/1",
+    )
+    mapper = _RecordingMapper()
+    engine = ApplicatorEngine(
+        browser=browser,
+        page_analyzer=_AlwaysFormAnalyzer(),
+        form_mapper=mapper,
+        dry_run=True,
+        screenshot_dir=tmp_path / "shots",
+    )
+    await engine.apply(apply_form_url, profile, job)
+    assert mapper.called is True
+    assert mapper.received_job is job
+
+
+async def test_engine_defaults_job_to_none(
+    browser: BrowserManager, apply_form_url: str, tmp_path: Path
+) -> None:
+    """Backward compat: apply(url, profile) forwards job=None."""
+    profile = UserProfile(first_name="Pat", last_name="Apply", email="p@example.com")
+    mapper = _RecordingMapper()
+    engine = ApplicatorEngine(
+        browser=browser,
+        page_analyzer=_AlwaysFormAnalyzer(),
+        form_mapper=mapper,
+        dry_run=True,
+        screenshot_dir=tmp_path / "shots",
+    )
+    await engine.apply(apply_form_url, profile)
+    assert mapper.called is True
+    assert mapper.received_job is None

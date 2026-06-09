@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from hamster.orchestrator import ResultLogger
-from hamster.shared import ApplicationRecord, ApplicationStatus
+from hamster.shared import (
+    ApplicationRecord,
+    ApplicationStatus,
+    JobListing,
+    JobSourceName,
+)
 
 
 def test_insert_and_list_applications(tmp_path: Path) -> None:
@@ -84,6 +89,33 @@ def test_discovery_task_round_trip(tmp_path: Path) -> None:
     assert updated is not None
     assert updated["status"] == "completed"
     assert updated["results"] == [{"id": "gh-1", "title": "SWE"}]
+
+
+def test_job_description_survives_round_trip(tmp_path: Path) -> None:
+    """A JobListing's description_snippet must persist + rehydrate, so the
+    worker can hand role context to the LLM."""
+    store = ResultLogger(tmp_path)
+    job = JobListing(
+        id="gh-anthropic-1",
+        source=JobSourceName.GREENHOUSE,
+        company="Anthropic",
+        title="Software Engineer",
+        url="https://job-boards.greenhouse.io/anthropic/jobs/1",
+        description_snippet="Build reliable, interpretable AI systems.",
+    )
+    store.insert_application(
+        ApplicationRecord(
+            url="https://job-boards.greenhouse.io/anthropic/jobs/1",
+            company="Anthropic",
+            title="Software Engineer",
+            job=job,
+        )
+    )
+    fetched = store.list_applications()[0]
+    assert fetched.job is not None
+    assert (
+        fetched.job.description_snippet == "Build reliable, interpretable AI systems."
+    )
 
 
 def test_filter_by_status(tmp_path: Path) -> None:

@@ -7,14 +7,24 @@ from hamster.orchestrator import (
     JobTask,
     ResultLogger,
 )
-from hamster.shared import ApplicationStatus, ApplyResult, UserProfile
+from hamster.shared import (
+    ApplicationStatus,
+    ApplyResult,
+    JobListing,
+    UserProfile,
+)
 
 
 class _StubApplicator:
     """Deterministic applicator: first URL succeeds, second fails."""
 
-    async def apply(self, url: str, profile: UserProfile) -> ApplyResult:
-        del profile
+    async def apply(
+        self,
+        url: str,
+        profile: UserProfile,
+        job: JobListing | None = None,
+    ) -> ApplyResult:
+        del profile, job
         if "good" in url:
             return ApplyResult(
                 success=True, status=ApplicationStatus.SUBMITTED, url=url
