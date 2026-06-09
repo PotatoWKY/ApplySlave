@@ -50,3 +50,55 @@ async def test_extract_finds_all_form_fields(
         el for el in dom.elements if el.element_type is ElementType.BUTTON
     )
     assert "submit" in (submit.label or "").lower()
+
+
+async def test_extract_harvests_combobox_options(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    extractor = DOMExtractor()
+    dom = await extractor.extract(page)
+
+    combobox = next(
+        el for el in dom.elements if el.element_type is ElementType.COMBOBOX
+    )
+    assert combobox.label == "Are you open to relocation?"
+    assert combobox.required is True
+    # Options live in the menu that only renders on open — the extractor must
+    # open the control to read them.
+    assert combobox.options == ["Yes", "No", "Prefer not to say"]
+
+    # A combobox must NOT be misclassified as a plain text input.
+    assert not any(
+        el.element_type is ElementType.INPUT_TEXT and el.selector == "#relocation"
+        for el in dom.elements
+    )
+
+
+async def test_extract_skips_aria_hidden_inputs(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    """react-select's hidden required-mirror input must not be extracted.
+
+    It has no label and only a fragile structural selector, so trying to fill
+    it crashes the run. The extractor drops aria-hidden / tabindex=-1 inputs.
+    """
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    dom = await DOMExtractor().extract(page)
+
+    # The only text-class inputs left should be real, labelled fields. None of
+    # the extracted elements should carry the requiredInput mirror's marker.
+    assert all("requiredInput" not in el.selector for el in dom.elements)
+    # And no extracted input should be both unlabeled and selector-fragile.
+    fragile = [
+        el
+        for el in dom.elements
+        if el.element_type is ElementType.INPUT_TEXT
+        and el.label is None
+        and not el.selector.startswith("#")
+    ]
+    assert fragile == []

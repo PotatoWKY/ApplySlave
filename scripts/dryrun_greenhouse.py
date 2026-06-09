@@ -22,7 +22,7 @@ from pathlib import Path
 
 from hamster.applicator import ApplicatorEngine
 from hamster.applicator.browser import BrowserManager
-from hamster.applicator.form_filler import FormMapper
+from hamster.applicator.form_filler import FormMapper, RuleBasedPageAnalyzer
 from hamster.applicator.llm import LLMClient, ModelManager
 from hamster.backend.dependencies import get_data_dir, get_profile_store
 from hamster.job_discovery.sources.greenhouse import GreenhouseSource
@@ -98,14 +98,18 @@ async def main() -> int:
     logger.info("URL: %s", url)
 
     # Wire in the local LLM if the model is present, so open-ended / custom
-    # fields (the ones rule-based mapping can't touch) get filled too.
+    # fields and dropdowns (the ones rule-based mapping can't touch) get
+    # filled too. One shared client feeds both the page analyzer and the form
+    # mapper — the same path the production worker uses.
     manager = ModelManager(data_dir=get_data_dir())
     if manager.is_installed():
-        logger.info("LLM model present; wiring it into FormMapper")
-        form_mapper = FormMapper(llm_client=LLMClient(model_path=manager.model_path))
+        logger.info("LLM model present; wiring it into analyzer + FormMapper")
+        llm_client = LLMClient(model_path=manager.model_path)
     else:
-        logger.info("No LLM model; rule-based form mapping only")
-        form_mapper = FormMapper()
+        logger.info("No LLM model; rule-based analysis + form mapping only")
+        llm_client = None
+    page_analyzer = RuleBasedPageAnalyzer(llm_client=llm_client)
+    form_mapper = FormMapper(llm_client=llm_client)
 
     # Headful + slow_mo so the fill is visible to a human watching.
     browser = BrowserManager(
@@ -117,6 +121,7 @@ async def main() -> int:
 
     engine = ApplicatorEngine(
         browser=browser,
+        page_analyzer=page_analyzer,
         form_mapper=form_mapper,
         dry_run=True,  # SAFETY: never clicks submit
         wild_mode=False,

@@ -68,6 +68,14 @@ def _dom() -> PageDOM:
                 label="Why do you want to work here?",
                 selector="#why",
             ),
+            PageElement(
+                id="el_6",
+                element_type=ElementType.COMBOBOX,
+                label="Are you open to relocation?",
+                selector="#relocation",
+                required=True,
+                options=["Yes", "No"],
+            ),
         ],
     )
 
@@ -120,7 +128,12 @@ async def test_merge_confidence_reflects_fill_ratio_not_min() -> None:
     """
     canned_llm_output = {
         "actions": [
-            {"type": "fill", "selector": "#why", "value": "Great mission."}
+            {"type": "fill", "selector": "#why", "value": "Great mission."},
+            {
+                "type": "select_combobox",
+                "selector": "#relocation",
+                "value": "Yes",
+            },
         ],
         "unmapped_fields": [],
         "confidence": 0.95,
@@ -133,6 +146,31 @@ async def test_merge_confidence_reflects_fill_ratio_not_min() -> None:
     # Every fillable field is covered → confidence is 1.0, well above the old
     # min(0.6, 0.95) = 0.6 that the bug produced.
     assert plan.confidence == 1.0
+
+
+async def test_combobox_action_type_corrected_from_element() -> None:
+    """The LLM may emit the wrong action type for a combobox; the mapper must
+    override it from the element's real type, not trust the model.
+
+    Here the LLM (wrongly) emits a native 'select' for a combobox element.
+    The merged plan must carry SELECT_COMBOBOX, since #relocation is a
+    combobox — otherwise the executor would call select_option on a non-select
+    and crash.
+    """
+    canned_llm_output = {
+        "actions": [
+            {"type": "select", "selector": "#relocation", "value": "Yes"},
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned_llm_output))
+    plan = await mapper.plan(_dom(), _profile())
+
+    relocation = next(a for a in plan.actions if a.selector == "#relocation")
+    assert relocation.type is ActionType.SELECT_COMBOBOX
+    assert relocation.value == "Yes"
 
 
 async def test_merge_confidence_partial_when_fields_remain() -> None:

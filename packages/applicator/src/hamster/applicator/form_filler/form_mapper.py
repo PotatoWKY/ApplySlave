@@ -104,6 +104,14 @@ class FormMapper:
                 )
             return None
 
+        # Choice controls (native select / combobox) must never be free-text
+        # filled from a label alias. Their value has to be one of the options,
+        # which only the LLM can pick semantically — e.g. "Are you open to
+        # relocation?" must not get the profile's location just because the
+        # label contains the substring "location".
+        if element.element_type in (ElementType.SELECT, ElementType.COMBOBOX):
+            return None
+
         label = _normalize(element.label or element.placeholder or "")
         if not label:
             return None
@@ -143,11 +151,15 @@ class FormMapper:
         field the LLM filled (by selector) was never removed from unmapped,
         and confidence (min of the two passes) ignored the LLM's work.
         """
+        type_by_selector = {
+            element.selector: element.element_type for element in dom.elements
+        }
         covered_selectors = {action.selector for action in base.actions}
         merged_actions = list(base.actions)
         for action in extra.actions:
             if action.selector not in covered_selectors:
-                merged_actions.append(action)
+                corrected = self._correct_action_type(action, type_by_selector)
+                merged_actions.append(corrected)
                 covered_selectors.add(action.selector)
 
         # A fillable element is unmapped iff no action targets its selector.
@@ -175,6 +187,31 @@ class FormMapper:
             reasoning="rule-based + llm",
         )
 
+    def _correct_action_type(
+        self,
+        action: PageAction,
+        type_by_selector: dict[str, ElementType],
+    ) -> PageAction:
+        """Force a fill action's type to match the element's real type.
+
+        Whether a control is a native ``<select>`` or a JS combobox is known
+        for certain at extraction time, so we don't let the LLM decide it — a
+        combobox element always gets SELECT_COMBOBOX, a native select gets
+        SELECT, regardless of what the model emitted. This removes a whole
+        class of "Element is not a <select>" failures. Non-value-setting
+        actions (click/check/upload) are left untouched.
+        """
+        element_type = type_by_selector.get(action.selector)
+        if element_type is ElementType.COMBOBOX:
+            desired = ActionType.SELECT_COMBOBOX
+        elif element_type is ElementType.SELECT:
+            desired = ActionType.SELECT
+        else:
+            return action
+        if action.type is desired:
+            return action
+        return action.model_copy(update={"type": desired})
+
 
 _FILLABLE_TYPES = {
     ElementType.INPUT_TEXT,
@@ -182,6 +219,7 @@ _FILLABLE_TYPES = {
     ElementType.INPUT_TEL,
     ElementType.TEXTAREA,
     ElementType.SELECT,
+    ElementType.COMBOBOX,
 }
 
 

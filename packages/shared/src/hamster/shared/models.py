@@ -111,7 +111,8 @@ class SearchQuery(_StrictModel):
 class ActionType(str, Enum):
     FILL = "fill"
     CLICK = "click"
-    SELECT = "select"
+    SELECT = "select"  # native <select> element
+    SELECT_COMBOBOX = "select_combobox"  # JS-driven combobox (e.g. react-select)
     CHECK = "check"
     UNCHECK = "uncheck"
     UPLOAD = "upload"
@@ -172,7 +173,8 @@ class ElementType(str, Enum):
     INPUT_FILE = "input_file"
     INPUT_CHECKBOX = "input_checkbox"
     INPUT_RADIO = "input_radio"
-    SELECT = "select"
+    SELECT = "select"  # native <select>
+    COMBOBOX = "combobox"  # JS-driven dropdown (e.g. react-select)
     TEXTAREA = "textarea"
     BUTTON = "button"
     OTHER = "other"

@@ -8,11 +8,11 @@ intentionally mechanical — all decision-making happens upstream.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
-from playwright.async_api import Page
-
 from hamster.shared import ActionType, PageAction
+from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,8 @@ class ActionExecutor:
                     await self._click(page, action)
                 case ActionType.SELECT:
                     await self._select(page, action)
+                case ActionType.SELECT_COMBOBOX:
+                    await self._select_combobox(page, action)
                 case ActionType.CHECK:
                     await page.check(action.selector, timeout=self._timeout_ms)
                 case ActionType.UNCHECK:
@@ -82,6 +84,42 @@ class ActionExecutor:
                 value=action.value,
                 timeout=self._timeout_ms,
             )
+
+    async def _select_combobox(self, page: Page, action: PageAction) -> None:
+        """Pick an option in a JS-driven combobox (react-select).
+
+        Open the control, then click the option whose text matches the value.
+        react-select renders options as `.select__option` only while open, so
+        the click target must be resolved after opening. Match is exact-trimmed
+        first, then a case-insensitive contains fallback for labels that carry
+        extra whitespace or punctuation.
+        """
+        if action.value is None:
+            raise ActionError(f"combobox requires a value: {action.selector}")
+
+        await page.click(action.selector, timeout=self._timeout_ms)
+        await page.wait_for_selector(
+            ".select__menu .select__option", timeout=self._timeout_ms
+        )
+
+        target = action.value.strip()
+        options = page.locator(".select__menu .select__option")
+        exact = options.filter(has_text=re.compile(rf"^\s*{re.escape(target)}\s*$"))
+        if await exact.count() > 0:
+            await exact.first.click(timeout=self._timeout_ms)
+            return
+
+        contains = options.filter(
+            has_text=re.compile(re.escape(target), re.IGNORECASE)
+        )
+        if await contains.count() > 0:
+            await contains.first.click(timeout=self._timeout_ms)
+            return
+
+        await page.keyboard.press("Escape")
+        raise ActionError(
+            f"no combobox option matching {action.value!r} for {action.selector}"
+        )
 
     async def _upload(self, page: Page, action: PageAction) -> None:
         if not action.value:

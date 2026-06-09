@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import logging
 
-from playwright.async_api import Page
-
 from hamster.shared import ElementType, PageDOM, PageElement
+from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +69,44 @@ _EXTRACT_JS = r"""
         return !!el.offsetParent;
     }
 
+    function isInteractable(el) {
+        // Skip elements the page itself marks as non-interactive. react-select
+        // injects a hidden required="" mirror input (aria-hidden, tabindex=-1)
+        // per dropdown purely for native form validation — it has no label and
+        // no stable selector, and filling it does nothing but break.
+        if (el.getAttribute('aria-hidden') === 'true') return false;
+        if (el.tabIndex === -1 && el.type !== 'file') return false;
+        return true;
+    }
+
     document.querySelectorAll('input:not([type="hidden"])').forEach((el) => {
         if (!isVisible(el)) return;
+        // JS-driven comboboxes (react-select) render as a text input with
+        // role=combobox. They carry no options in the DOM until opened, so
+        // they're collected separately below — skip them here.
+        if (el.getAttribute('role') === 'combobox') return;
+        if (!isInteractable(el)) return;
         out.push({
             tag: 'input',
             type: (el.type || 'text').toLowerCase(),
+            label: resolveLabel(el),
+            placeholder: el.placeholder || null,
+            required: el.required || el.getAttribute('aria-required') === 'true',
+            value: el.value || null,
+            selector: buildSelector(el),
+        });
+    });
+
+    // Comboboxes: role=combobox text inputs (react-select and similar). Options
+    // are harvested on the Python side by opening each one. We exclude the
+    // intl-tel-input phone country picker (selector #country) — it ships a
+    // sensible default and isn't a question to answer.
+    document.querySelectorAll('input[role="combobox"]').forEach((el) => {
+        if (!isVisible(el)) return;
+        if (el.id === 'country') return;
+        out.push({
+            tag: 'combobox',
+            type: 'combobox',
             label: resolveLabel(el),
             placeholder: el.placeholder || null,
             required: el.required || el.getAttribute('aria-required') === 'true',
@@ -139,8 +171,14 @@ _TYPE_MAP = {
     ("input", "submit"): ElementType.BUTTON,
     ("button", "submit"): ElementType.BUTTON,
     ("select", "select"): ElementType.SELECT,
+    ("combobox", "combobox"): ElementType.COMBOBOX,
     ("textarea", "textarea"): ElementType.TEXTAREA,
 }
+
+# react-select renders its options as `.select__option` inside a `.select__menu`
+# popup, but only after the control is opened. These selectors drive the
+# open-read-close harvest below.
+_COMBOBOX_MENU_OPTION = ".select__menu .select__option"
 
 
 def _classify(tag: str, raw_type: str | None) -> ElementType:
@@ -181,5 +219,41 @@ class DOMExtractor:
                 )
             )
 
+        await self._harvest_combobox_options(page, elements)
+
         logger.info("Extracted %d elements from %s", len(elements), url)
         return PageDOM(url=url, title=title, elements=elements)
+
+    async def _harvest_combobox_options(
+        self, page: Page, elements: list[PageElement]
+    ) -> None:
+        """Fill in `options` for combobox elements by opening each one.
+
+        react-select only renders its options once the control is clicked, so
+        we can't read them in the single DOM pass. For each combobox we open
+        it, read the rendered option labels, then close it with Escape. A
+        combobox we can't open is left with empty options — the mapper treats
+        that as unmapped rather than guessing.
+        """
+        for element in elements:
+            if element.element_type is not ElementType.COMBOBOX:
+                continue
+            try:
+                await page.click(element.selector, timeout=3_000)
+                await page.wait_for_selector(_COMBOBOX_MENU_OPTION, timeout=3_000)
+                option_texts = await page.eval_on_selector_all(
+                    _COMBOBOX_MENU_OPTION,
+                    "nodes => nodes.map(n => (n.textContent || '').trim())"
+                    ".filter(Boolean)",
+                )
+                await page.keyboard.press("Escape")
+                element.options = list(option_texts)
+                logger.debug(
+                    "Combobox %s options: %s", element.selector, option_texts
+                )
+            except Exception as error:
+                logger.warning(
+                    "Failed to harvest options for combobox %s: %s",
+                    element.selector,
+                    error,
+                )

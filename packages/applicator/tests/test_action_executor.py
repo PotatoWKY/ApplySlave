@@ -83,3 +83,56 @@ async def test_select_missing_value_raises(
             page,
             PageAction(type=ActionType.SELECT, selector="#experience"),
         )
+
+
+async def test_select_combobox_picks_option(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    executor = ActionExecutor()
+    await executor.execute(
+        page,
+        PageAction(
+            type=ActionType.SELECT_COMBOBOX, selector="#relocation", value="Yes"
+        ),
+    )
+
+    # The emulated react-select writes the chosen text back to the control.
+    assert await page.input_value("#relocation") == "Yes"
+    assert (
+        await page.get_attribute(".select__value", "data-value") == "Yes"
+    )
+
+
+async def test_select_combobox_no_matching_option_raises(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    executor = ActionExecutor()
+    with pytest.raises(ActionError):
+        await executor.execute(
+            page,
+            PageAction(
+                type=ActionType.SELECT_COMBOBOX,
+                selector="#relocation",
+                value="Maybe someday",
+            ),
+        )
+
+
+async def test_select_combobox_missing_value_raises(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    executor = ActionExecutor()
+    with pytest.raises(ActionError):
+        await executor.execute(
+            page,
+            PageAction(type=ActionType.SELECT_COMBOBOX, selector="#relocation"),
+        )

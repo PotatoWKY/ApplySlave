@@ -70,15 +70,20 @@ class DefaultPromptBuilder:
         return (
             "You are mapping a user's profile onto a web application form.\n"
             "Return only JSON matching:\n"
-            '{"actions":[{"type":"fill|click|select|check|uncheck|upload",'
-            '"selector":"...","value":"..."}],'
+            '{"actions":[{"type":"fill|click|select|select_combobox|check|'
+            'uncheck|upload","selector":"...","value":"..."}],'
             '"unmapped_fields":["..."],'
             '"confidence":0.0,'
             '"reasoning":"..."}\n\n'
             "Rules:\n"
             "- Use exactly the selectors given.\n"
-            "- For select/radio elements, value MUST exactly match one of the "
-            "provided options.\n"
+            "- For 'select' (native) and 'combobox' elements, value MUST "
+            "exactly match one of the provided options.\n"
+            "- Use type='select_combobox' for elements whose type is "
+            "'combobox'; use type='select' for type 'select'.\n"
+            "- Answer every required combobox question (visa sponsorship, "
+            "relocation, in-person, etc.) using the profile; only leave one "
+            "unmapped if the profile genuinely lacks the information.\n"
             "- Use type='upload' with value=profile.resume_path for resume "
             "file inputs.\n"
             "- Add fields you couldn't map to 'unmapped_fields'.\n\n"
