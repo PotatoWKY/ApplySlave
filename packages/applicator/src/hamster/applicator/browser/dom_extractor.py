@@ -97,11 +97,18 @@ _EXTRACT_JS = r"""
         });
     });
 
-    // Comboboxes: role=combobox text inputs (react-select and similar). Options
-    // are harvested on the Python side by opening each one. We exclude the
-    // intl-tel-input phone country picker (selector #country) — it ships a
-    // sensible default and isn't a question to answer.
-    document.querySelectorAll('input[role="combobox"]').forEach((el) => {
+    // Comboboxes: react-select question inputs. We require the react-select
+    // 'select__input' class rather than role=combobox alone, because the phone
+    // widget's intl-tel-input injects its own role=combobox search box (id
+    // 'iti-0__search-input', label 'Search') that has no '.select__menu' and
+    // always fails option harvest. That junk control only surfaces once the
+    // networkidle settle below lets the phone widget hydrate, so this class
+    // filter is what keeps the networkidle wait safe. We still exclude #country
+    // (the phone country picker — it carries 'select__input' too but ships a
+    // sensible default and isn't a question) as defense in depth.
+    // NOTE: '.select__input' is react-select's internal class, not a public
+    // API; verified for Greenhouse. Other ATS platforms need re-checking.
+    document.querySelectorAll('input.select__input[role="combobox"]').forEach((el) => {
         if (!isVisible(el)) return;
         if (el.id === 'country') return;
         out.push({
@@ -195,6 +202,15 @@ class DOMExtractor:
         except Exception as error:  # noqa: BLE001 - timeouts are expected
             logger.debug("Continuing despite load-state timeout: %s", error)
 
+        # react-select hydrates after the initial DOM is ready; without waiting
+        # for the network to settle, opening a combobox to read its options is
+        # racy (all-or-nothing per page load). networkidle makes option harvest
+        # reliable. Guarded because some single-page-app forms never go idle.
+        try:
+            await page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception as error:  # noqa: BLE001 - timeouts are expected
+            logger.debug("Continuing despite networkidle timeout: %s", error)
+
         url = page.url
         title = await page.title()
 
@@ -248,10 +264,16 @@ class DOMExtractor:
                 )
                 await page.keyboard.press("Escape")
                 element.options = list(option_texts)
+                # An opened react-select that yields zero options is an
+                # extraction anomaly, not a genuinely empty question.
+                element.harvest_failed = not option_texts
                 logger.debug(
-                    "Combobox %s options: %s", element.selector, option_texts
+                    "Combobox %s: harvested %d options",
+                    element.selector,
+                    len(option_texts),
                 )
             except Exception as error:
+                element.harvest_failed = True
                 logger.warning(
                     "Failed to harvest options for combobox %s: %s",
                     element.selector,

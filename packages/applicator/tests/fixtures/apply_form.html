@@ -75,6 +75,18 @@
       </div>
     </div>
 
+    <!-- intl-tel-input's internal country SEARCH box: role=combobox but NOT a
+         react-select question (no 'select__input' class, no '.select__menu').
+         The extractor must NOT treat this as a fillable combobox. -->
+    <input
+      id="iti-0__search-input"
+      type="text"
+      role="combobox"
+      aria-label="Search"
+      aria-autocomplete="list"
+      autocomplete="off"
+    />
+
     <button type="submit">Submit Application</button>
   </form>
 

@@ -1,6 +1,7 @@
 """Shared data models and protocols used across Hamster packages."""
 
 from hamster.shared.models import (
+    ActionFailure,
     ActionType,
     ApplicationRecord,
     ApplicationStatus,
@@ -31,6 +32,7 @@ from hamster.shared.protocols import (
 
 __all__ = [
     # models
+    "ActionFailure",
     "ActionType",
     "ApplicationRecord",
     "ApplicationStatus",

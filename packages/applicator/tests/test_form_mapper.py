@@ -187,3 +187,135 @@ async def test_merge_confidence_partial_when_fields_remain() -> None:
 
     # One field still unmapped out of the fillable set → ratio < 1.0
     assert 0.0 < plan.confidence < 1.0
+
+
+async def test_merge_drops_out_of_range_combobox_value() -> None:
+    """An LLM-invented combobox value that isn't a real option is dropped.
+
+    #relocation's options are ['Yes','No']; the LLM hallucinates 'I agree to
+    the AI Policy'. That action must not reach the plan (it would crash the
+    executor), and the field stays unmapped.
+    """
+    canned_llm_output = {
+        "actions": [
+            {
+                "type": "select_combobox",
+                "selector": "#relocation",
+                "value": "I agree to the AI Policy",
+            },
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned_llm_output))
+    plan = await mapper.plan(_dom(), _profile())
+
+    assert not any(a.selector == "#relocation" for a in plan.actions)
+    assert "Are you open to relocation?" in plan.unmapped_fields
+
+
+async def test_merge_passes_through_empty_option_combobox() -> None:
+    """A combobox whose options failed to harvest is left to the (non-fatal)
+    executor and excluded from the confidence denominator.
+
+    With harvest_failed=True and empty options, the validation gate can't
+    check the value, so it passes through rather than being silently dropped;
+    and the field neither counts as covered nor penalizes confidence.
+    """
+    dom = PageDOM(
+        url="https://x/apply",
+        title="Apply",
+        elements=[
+            PageElement(
+                id="el_0",
+                element_type=ElementType.INPUT_EMAIL,
+                label="Email",
+                selector="#email",
+                required=True,
+            ),
+            PageElement(
+                id="el_1",
+                element_type=ElementType.COMBOBOX,
+                label="Unharvestable question",
+                selector="#mystery",
+                required=True,
+                options=[],
+                harvest_failed=True,
+            ),
+        ],
+    )
+    canned_llm_output = {
+        "actions": [
+            {
+                "type": "select_combobox",
+                "selector": "#mystery",
+                "value": "Some guess",
+            },
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned_llm_output))
+    plan = await mapper.plan(dom, _profile())
+
+    # Value passes through (not dropped) since options are unknown.
+    assert any(a.selector == "#mystery" for a in plan.actions)
+    # Email is the only field in the confidence denominator; it's covered, so
+    # the harvest-failed combobox neither lowers confidence nor is unmapped.
+    assert plan.confidence == 1.0
+    assert "Unharvestable question" not in plan.unmapped_fields
+
+
+async def test_free_text_filled_from_profile() -> None:
+    """Optional free-text fields get filled from real profile material.
+
+    The mapper itself doesn't synthesize text (the LLM does), but it must keep
+    a valid LLM free-text action for an optional textarea and count it as
+    covered. Uses a profile with real experience so the value is profile-drawn.
+    """
+    profile = UserProfile(
+        first_name="San",
+        last_name="Zhang",
+        email="san@example.com",
+        resume_path="/tmp/resume.pdf",
+        skills=["Python", "FastAPI"],
+    )
+    dom = PageDOM(
+        url="https://x/apply",
+        title="Apply",
+        elements=[
+            PageElement(
+                id="el_0",
+                element_type=ElementType.INPUT_EMAIL,
+                label="Email",
+                selector="#email",
+                required=True,
+            ),
+            PageElement(
+                id="el_1",
+                element_type=ElementType.TEXTAREA,
+                label="Additional Information",
+                selector="#additional",
+            ),
+        ],
+    )
+    canned_llm_output = {
+        "actions": [
+            {
+                "type": "fill",
+                "selector": "#additional",
+                "value": "I work with Python and FastAPI.",
+            },
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned_llm_output))
+    plan = await mapper.plan(dom, profile)
+
+    additional = next(a for a in plan.actions if a.selector == "#additional")
+    assert "Python" in additional.value
+    assert "Additional Information" not in plan.unmapped_fields

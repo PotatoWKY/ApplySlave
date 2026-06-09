@@ -69,12 +69,37 @@ async def test_extract_harvests_combobox_options(
     # Options live in the menu that only renders on open — the extractor must
     # open the control to read them.
     assert combobox.options == ["Yes", "No", "Prefer not to say"]
+    # A combobox whose options were read is not flagged as a harvest failure.
+    assert combobox.harvest_failed is False
 
     # A combobox must NOT be misclassified as a plain text input.
     assert not any(
         el.element_type is ElementType.INPUT_TEXT and el.selector == "#relocation"
         for el in dom.elements
     )
+
+
+async def test_extract_excludes_non_react_select_combobox(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    """A role=combobox without react-select's 'select__input' class (the phone
+    widget's country search box) must never be extracted as a fillable field.
+
+    It has no '.select__menu', so treating it as a combobox would only produce
+    a harvest failure and a field nothing can fill.
+    """
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    dom = await DOMExtractor().extract(page)
+
+    assert all(el.selector != "#iti-0__search-input" for el in dom.elements)
+    # Exactly one real combobox is detected (the relocation question).
+    comboboxes = [
+        el for el in dom.elements if el.element_type is ElementType.COMBOBOX
+    ]
+    assert len(comboboxes) == 1
+    assert comboboxes[0].selector == "#relocation"
 
 
 async def test_extract_skips_aria_hidden_inputs(

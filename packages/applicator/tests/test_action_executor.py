@@ -42,7 +42,8 @@ async def test_fill_and_submit(
     ]
 
     executor = ActionExecutor()
-    await executor.run_plan(page, actions)
+    failures = await executor.run_plan(page, actions)
+    assert failures == []
 
     # Verify DOM state reflects the actions
     assert await page.input_value("#first-name") == "San"
@@ -136,3 +137,31 @@ async def test_select_combobox_missing_value_raises(
             page,
             PageAction(type=ActionType.SELECT_COMBOBOX, selector="#relocation"),
         )
+
+
+async def test_run_plan_collects_failure_and_continues(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    """One failing action must not abort the rest of the plan.
+
+    A fill against a non-existent selector fails, but the valid fill after it
+    must still land, and run_plan returns the failure instead of raising.
+    """
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    actions = [
+        PageAction(type=ActionType.FILL, selector="#first-name", value="San"),
+        PageAction(type=ActionType.FILL, selector="#does-not-exist", value="x"),
+        PageAction(type=ActionType.FILL, selector="#last-name", value="Zhang"),
+    ]
+
+    executor = ActionExecutor()
+    failures = await executor.run_plan(page, actions)
+
+    assert len(failures) == 1
+    assert failures[0].selector == "#does-not-exist"
+    assert failures[0].action_type is ActionType.FILL
+    # The valid fields on either side of the failure still filled.
+    assert await page.input_value("#first-name") == "San"
+    assert await page.input_value("#last-name") == "Zhang"

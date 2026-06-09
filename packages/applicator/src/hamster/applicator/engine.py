@@ -113,7 +113,19 @@ class ApplicatorEngine:
                         confidence=plan.confidence,
                     )
 
-                await self._action_executor.run_plan(page, plan.actions)
+                action_failures = await self._action_executor.run_plan(
+                    page, plan.actions
+                )
+                execution_failures = [
+                    failure.error for failure in action_failures
+                ]
+                if execution_failures:
+                    logger.error(
+                        "Filled %s with %d action failure(s): %s",
+                        url,
+                        len(execution_failures),
+                        execution_failures,
+                    )
 
                 submit_selector = _find_submit_selector(dom)
                 if submit_selector is None:
@@ -135,25 +147,60 @@ class ApplicatorEngine:
                         url,
                         screenshot_path,
                     )
+                    base_note = (
+                        f"Dry-run complete. Form filled, submit not "
+                        f"clicked. Screenshot: {screenshot_path}"
+                        if screenshot_path
+                        else "Dry-run complete. Form filled, submit not clicked."
+                    )
+                    # Surface fill failures so a human reconciles a blank field
+                    # in the screenshot with a real failure vs. missing data.
+                    if execution_failures:
+                        base_note += (
+                            f" ({len(execution_failures)} field(s) failed to "
+                            "fill — see logs)"
+                        )
                     return ApplyResult(
                         success=True,
                         status=ApplicationStatus.NEEDS_REVIEW,
                         url=url,
                         confidence=plan.confidence,
                         intervention_reason="DRY_RUN",
-                        error=(
-                            f"Dry-run complete. Form filled, submit not "
-                            f"clicked. Screenshot: {screenshot_path}"
-                            if screenshot_path
-                            else "Dry-run complete. Form filled, submit not clicked."
-                        ),
+                        error=base_note,
+                        execution_failures=execution_failures,
                     )
 
-                # Live submission. Unless wild mode is on, refuse to click
-                # submit when the form mapping confidence is below the safety
-                # floor — fill is done and screenshotted, but a human should
-                # look before an irreversible submit. Wild mode skips this:
-                # the user has opted into "submit no matter what, zero touch".
+                # Live submission. A field that failed to fill blocks submit
+                # even in wild mode: run_plan is now non-fatal, so without this
+                # guard wild mode could submit a form with a blank required
+                # field. This is the one execution-failure case that must stop
+                # a live submit; it doesn't apply to dry-run (handled above).
+                if execution_failures:
+                    logger.warning(
+                        "Not submitting %s: %d field(s) failed to fill. "
+                        "Screenshot: %s",
+                        url,
+                        len(execution_failures),
+                        screenshot_path,
+                    )
+                    return ApplyResult(
+                        success=False,
+                        status=ApplicationStatus.NEEDS_REVIEW,
+                        url=url,
+                        confidence=plan.confidence,
+                        intervention_reason="FILL_INCOMPLETE",
+                        error=(
+                            f"{len(execution_failures)} field(s) failed to "
+                            "fill; not submitting. See logs."
+                        ),
+                        execution_failures=execution_failures,
+                    )
+
+                # Unless wild mode is on, refuse to click submit when the form
+                # mapping confidence is below the safety floor — fill is done
+                # and screenshotted, but a human should look before an
+                # irreversible submit. Wild mode skips this: the user has opted
+                # into "submit no matter what, zero touch".
                 if (
                     not self._wild_mode
                     and plan.confidence < SUBMIT_CONFIDENCE_THRESHOLD

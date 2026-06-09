@@ -126,6 +126,15 @@ class PageAction(_StrictModel):
     value: str | None = None
 
 
+class ActionFailure(_StrictModel):
+    """One action that failed during a fill, captured so a single failing
+    field doesn't abort the whole application."""
+
+    selector: str
+    action_type: ActionType
+    error: str
+
+
 class ApplicationStatus(str, Enum):
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"
@@ -160,6 +169,10 @@ class ApplyResult(_StrictModel):
     error: str | None = None
     confidence: float = 1.0  # LLM-reported confidence
     intervention_reason: str | None = None  # if needs_review
+    # Per-action fill errors collected during execution; surfaced for debugging
+    # and human review, not a stop condition (one bad field no longer fails the
+    # whole application).
+    execution_failures: list[str] = Field(default_factory=list)
 
 
 # --- Page structure (DOM extraction output) ---------------------------------
@@ -189,6 +202,11 @@ class PageElement(_StrictModel):
     placeholder: str | None = None
     required: bool = False
     options: list[str] = Field(default_factory=list)  # for select / radio groups
+    # True when a combobox's options could not be read (hydration / extraction
+    # failure), as opposed to a control that genuinely has no options. Lets the
+    # mapper avoid penalizing confidence for fields that failed extraction
+    # rather than lacking profile data.
+    harvest_failed: bool = False
     current_value: str | None = None
     selector: str  # CSS selector the browser layer can use
 

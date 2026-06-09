@@ -7,7 +7,10 @@ from pathlib import Path
 from hamster.applicator import ApplicatorEngine
 from hamster.applicator.browser import BrowserManager
 from hamster.shared import (
+    ActionType,
     ApplicationStatus,
+    FillPlan,
+    PageAction,
     PageAnalysis,
     PageDOM,
     PageType,
@@ -167,3 +170,58 @@ async def test_engine_wild_mode_submits_below_confidence(
     # fixture confirms on the next step.
     assert result.status is ApplicationStatus.SUBMITTED
     assert result.success is True
+
+
+class _DoomedComboboxMapper:
+    """Returns a plan whose combobox action can't be executed (bad value),
+    so we can verify one failed action doesn't sink the whole application."""
+
+    async def plan(self, dom: PageDOM, profile: UserProfile) -> FillPlan:
+        return FillPlan(
+            actions=[
+                PageAction(
+                    type=ActionType.FILL, selector="#first-name", value="San"
+                ),
+                # #relocation exists but 'Atlantis' is not an option -> the
+                # executor will raise ActionError for this one action.
+                PageAction(
+                    type=ActionType.SELECT_COMBOBOX,
+                    selector="#relocation",
+                    value="Atlantis",
+                ),
+            ],
+            unmapped_fields=[],
+            confidence=0.95,
+            reasoning="test stub",
+        )
+
+
+async def test_engine_dry_run_surfaces_action_failures(
+    browser: BrowserManager, apply_form_url: str, tmp_path: Path
+) -> None:
+    """A single failing action is surfaced in execution_failures and does NOT
+    mark the whole application FAILED; confidence reflects the plan, not the
+    execution outcome."""
+    profile = UserProfile(
+        first_name="San",
+        last_name="Zhang",
+        email="san@example.com",
+    )
+
+    engine = ApplicatorEngine(
+        browser=browser,
+        page_analyzer=_AlwaysFormAnalyzer(),
+        form_mapper=_DoomedComboboxMapper(),
+        dry_run=True,
+        screenshot_dir=tmp_path / "shots",
+    )
+    result = await engine.apply(apply_form_url, profile)
+
+    assert result.status is ApplicationStatus.NEEDS_REVIEW
+    assert result.intervention_reason == "DRY_RUN"
+    assert result.success is True
+    # The one bad action is reported, not swallowed; the good fill still ran.
+    assert len(result.execution_failures) == 1
+    assert "#relocation" in result.execution_failures[0]
+    # Confidence is the plan's (0.95), unaffected by the execution failure.
+    assert result.confidence == 0.95

@@ -8,10 +8,10 @@ intentionally mechanical — all decision-making happens upstream.
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
-from hamster.shared import ActionType, PageAction
+from hamster.applicator.matching import first_matching_index, normalize_option
+from hamster.shared import ActionFailure, ActionType, PageAction
 from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
@@ -52,9 +52,37 @@ class ActionExecutor:
                 f"{action.type.value} failed on {action.selector}: {error}"
             ) from error
 
-    async def run_plan(self, page: Page, actions: list[PageAction]) -> None:
+    async def run_plan(
+        self, page: Page, actions: list[PageAction]
+    ) -> list[ActionFailure]:
+        """Execute every action, collecting per-action failures instead of
+        aborting on the first one.
+
+        A single field that won't fill (stale selector, an out-of-range value)
+        must not throw away the other fields that filled fine — the engine
+        still needs to screenshot and reach the dry-run / review gate. Each
+        failure is captured as an ActionFailure and surfaced to the engine
+        (which blocks live submit when any are present).
+
+        Only ActionError is caught here. execute() already wraps every
+        per-action exception in ActionError, so in practice that covers the
+        action-level faults; anything raised outside execute() (a programming
+        error in this loop itself) still propagates.
+        """
+        failures: list[ActionFailure] = []
         for action in actions:
-            await self.execute(page, action)
+            try:
+                await self.execute(page, action)
+            except ActionError as error:
+                logger.error("Action failed (continuing): %s", error)
+                failures.append(
+                    ActionFailure(
+                        selector=action.selector,
+                        action_type=action.type,
+                        error=str(error),
+                    )
+                )
+        return failures
 
     # --- private helpers ------------------------------------------------
 
@@ -102,24 +130,21 @@ class ActionExecutor:
             ".select__menu .select__option", timeout=self._timeout_ms
         )
 
-        target = action.value.strip()
-        options = page.locator(".select__menu .select__option")
-        exact = options.filter(has_text=re.compile(rf"^\s*{re.escape(target)}\s*$"))
-        if await exact.count() > 0:
-            await exact.first.click(timeout=self._timeout_ms)
-            return
-
-        contains = options.filter(
-            has_text=re.compile(re.escape(target), re.IGNORECASE)
+        # Resolve the option to click from the live menu text, using the same
+        # exact-then-contains rule the mapper validated the value against (see
+        # hamster.applicator.matching) so the two never disagree.
+        option_locator = page.locator(".select__menu .select__option")
+        option_texts = await option_locator.all_text_contents()
+        match_index = first_matching_index(
+            normalize_option(action.value), option_texts
         )
-        if await contains.count() > 0:
-            await contains.first.click(timeout=self._timeout_ms)
-            return
-
-        await page.keyboard.press("Escape")
-        raise ActionError(
-            f"no combobox option matching {action.value!r} for {action.selector}"
-        )
+        if match_index is None:
+            await page.keyboard.press("Escape")
+            raise ActionError(
+                f"no combobox option matching {action.value!r} for "
+                f"{action.selector}"
+            )
+        await option_locator.nth(match_index).click(timeout=self._timeout_ms)
 
     async def _upload(self, page: Page, action: PageAction) -> None:
         if not action.value:
