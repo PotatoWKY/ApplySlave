@@ -246,3 +246,6 @@ apps/hamster-desktop/src-tauri/binaries/
 
 # macOS / 编辑器杂项
 .DS_Store
+
+# Local dry-run verification screenshots (may contain profile PII)
+data/verification/

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from hamster.applicator.llm import DefaultPromptBuilder
 from hamster.shared import (
     Education,
@@ -146,3 +148,15 @@ def test_prompt_stays_within_token_budget_worst_case() -> None:
     )
     estimated_tokens = len(prompt) / 3.5
     assert estimated_tokens < 12000, f"prompt too large: ~{estimated_tokens:.0f} tokens"
+
+
+def test_current_date_injected_for_forward_looking_dates() -> None:
+    """The prompt must state today's date and forbid past dates for
+    availability/start questions — the model has no inherent 'now', so without
+    this it answers with a stale year (the 2024-in-2026 bug)."""
+    prompt = DefaultPromptBuilder().build_form_mapping_prompt(
+        _dom(), _profile(), today=date(2026, 6, 10)
+    )
+    assert "TODAY'S DATE is 2026-06-10" in prompt
+    assert "forward-looking date" in prompt
+    assert "on or after today" in prompt

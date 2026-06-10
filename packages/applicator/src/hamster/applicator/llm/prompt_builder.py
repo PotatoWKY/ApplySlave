@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date
 
 from hamster.shared import JobListing, PageDOM, UserProfile
 
@@ -49,7 +50,13 @@ class DefaultPromptBuilder:
         dom: PageDOM,
         profile: UserProfile,
         job: JobListing | None = None,
+        today: date | None = None,
     ) -> str:
+        # The model has no inherent sense of "now" (its training cutoff is in
+        # the past), so without this it answers availability/start-date
+        # questions with a stale year. Inject the real current date and require
+        # forward-looking answers to be on or after it. Injectable for tests.
+        current_date = (today or date.today()).isoformat()
         elements = [
             {
                 "id": el.id,
@@ -117,6 +124,11 @@ class DefaultPromptBuilder:
             "profile.experience start/end dates; if it falls short or you "
             "cannot verify it, answer 'No' or leave it unmapped — never affirm "
             "a threshold the profile doesn't substantiate.\n"
+            f"- TODAY'S DATE is {current_date}. For any forward-looking date "
+            "(earliest start date, availability, when you can begin), the value "
+            "MUST be on or after today — never a past date. If unsure, answer "
+            "'Immediately' or leave it unmapped. Past dates in the profile "
+            "(employment/education history) are unchanged.\n"
             "- Fill optional free-text fields (e.g. 'Additional Information', "
             "cover-letter-style textareas) by synthesizing ONLY from "
             "profile.experience[].description and profile.skills — they add "
