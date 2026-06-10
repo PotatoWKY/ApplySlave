@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-
 from hamster.applicator.browser import BrowserManager
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -20,6 +19,11 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 @pytest.fixture
 def apply_form_url() -> str:
     return (FIXTURES_DIR / "apply_form.html").resolve().as_uri()
+
+
+@pytest.fixture
+def aria_portal_form_url() -> str:
+    return (FIXTURES_DIR / "aria_portal_form.html").resolve().as_uri()
 
 
 @pytest_asyncio.fixture

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from hamster.applicator.llm import ResumeExtractor, StaticLLMClient
 from hamster.shared import UserProfile
 

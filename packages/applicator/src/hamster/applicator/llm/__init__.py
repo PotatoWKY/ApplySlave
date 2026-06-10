@@ -2,9 +2,9 @@
 
 from hamster.applicator.llm.client import LLMClient, StaticLLMClient
 from hamster.applicator.llm.level_recommender import (
+    VALID_LEVELS,
     LevelRecommendation,
     LevelRecommender,
-    VALID_LEVELS,
 )
 from hamster.applicator.llm.model_manager import (
     DEFAULT_MODEL_NAME,

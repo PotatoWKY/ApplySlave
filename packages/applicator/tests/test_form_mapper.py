@@ -393,3 +393,102 @@ async def test_no_job_keeps_prompt_role_free() -> None:
     # The rules text mentions JOB CONTEXT; the actual block (Company: line)
     # must be absent when no job is passed.
     assert "Company: " not in recorder.prompt
+
+
+def _radio_dom() -> PageDOM:
+    """DOM with a radio group + a demographic checkbox + an email field."""
+    return PageDOM(
+        url="https://x/apply",
+        title="Apply",
+        elements=[
+            PageElement(
+                id="el_0",
+                element_type=ElementType.INPUT_EMAIL,
+                label="Email",
+                selector="#email",
+                required=True,
+            ),
+            PageElement(
+                id="el_1",
+                element_type=ElementType.INPUT_RADIO,
+                label="Preferred work location?",
+                selector="#loc_remote",
+                options=["Remote", "Hybrid", "Onsite"],
+                option_selectors={
+                    "Remote": "#loc_remote",
+                    "Hybrid": "#loc_hybrid",
+                    "Onsite": "#loc_onsite",
+                },
+            ),
+            PageElement(
+                id="el_2",
+                element_type=ElementType.INPUT_CHECKBOX,
+                label="I am a protected veteran",
+                selector="#veteran",
+            ),
+        ],
+    )
+
+
+async def test_deterministic_skips_radio_and_checkbox() -> None:
+    """Choice controls get no deterministic action — only the LLM answers
+    them, so demographic radios/checkboxes can't be label-matched."""
+    plan = await FormMapper().plan(_radio_dom(), _profile())
+    selectors = {action.selector for action in plan.actions}
+    assert "#loc_remote" not in selectors
+    assert "#veteran" not in selectors
+    assert "Preferred work location?" in plan.unmapped_fields
+
+
+async def test_llm_radio_click_resolves_option_selector() -> None:
+    """An LLM radio choice is rewritten to a CLICK on the chosen option's
+    concrete selector (group selector -> per-option selector)."""
+    canned = {
+        "actions": [
+            {"type": "click", "selector": "#loc_remote", "value": "Hybrid"},
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned))
+    plan = await mapper.plan(_radio_dom(), _profile())
+
+    radio_actions = [a for a in plan.actions if a.selector == "#loc_hybrid"]
+    assert len(radio_actions) == 1
+    assert radio_actions[0].type is ActionType.CLICK
+
+
+async def test_radio_value_out_of_range_dropped() -> None:
+    """An LLM radio value that isn't an option is dropped; field stays unmapped."""
+    canned = {
+        "actions": [
+            {"type": "click", "selector": "#loc_remote", "value": "Mars"},
+        ],
+        "unmapped_fields": [],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned))
+    plan = await mapper.plan(_radio_dom(), _profile())
+
+    assert not any(
+        a.selector in ("#loc_remote", "#loc_hybrid", "#loc_onsite")
+        for a in plan.actions
+    )
+    assert "Preferred work location?" in plan.unmapped_fields
+
+
+async def test_checkbox_left_unmapped_without_profile_data() -> None:
+    """When the LLM leaves a demographic checkbox unmapped, the mapper must not
+    synthesize an action for it."""
+    canned = {
+        "actions": [],
+        "unmapped_fields": ["I am a protected veteran"],
+        "confidence": 0.9,
+        "reasoning": "mocked",
+    }
+    mapper = FormMapper(llm_client=StaticLLMClient(canned))
+    plan = await mapper.plan(_radio_dom(), _profile())
+
+    assert not any(a.selector == "#veteran" for a in plan.actions)

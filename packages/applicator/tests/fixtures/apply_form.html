@@ -76,8 +76,9 @@
     </div>
 
     <!-- intl-tel-input's internal country SEARCH box: role=combobox but NOT a
-         react-select question (no 'select__input' class, no '.select__menu').
-         The extractor must NOT treat this as a fillable combobox. -->
+         real question (aria-label='Search', no aria-labelledby / <label>).
+         The generic label predicate must exclude it — without any 'iti-' or
+         'select__' string. -->
     <input
       id="iti-0__search-input"
       type="text"
@@ -86,6 +87,23 @@
       aria-autocomplete="list"
       autocomplete="off"
     />
+
+    <!-- Radio group: N inputs sharing a name = ONE mutually-exclusive question.
+         The extractor must collapse these into a single INPUT_RADIO element
+         with options [Remote, Hybrid, Onsite] + per-option selectors. -->
+    <fieldset>
+      <legend>What is your preferred work location?</legend>
+      <label><input type="radio" name="work_location" id="loc_remote" value="remote" /> Remote</label>
+      <label><input type="radio" name="work_location" id="loc_hybrid" value="hybrid" /> Hybrid</label>
+      <label><input type="radio" name="work_location" id="loc_onsite" value="onsite" /> Onsite</label>
+    </fieldset>
+
+    <!-- Standalone demographic checkbox: must be left unmapped without explicit
+         profile data (NEVER-FABRICATE). -->
+    <label>
+      <input type="checkbox" id="veteran" name="veteran" />
+      I am a protected veteran
+    </label>
 
     <button type="submit">Submit Application</button>
   </form>

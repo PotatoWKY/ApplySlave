@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from hamster.applicator.browser import (
     ActionError,
     ActionExecutor,
@@ -165,3 +164,51 @@ async def test_run_plan_collects_failure_and_continues(
     # The valid fields on either side of the failure still filled.
     assert await page.input_value("#first-name") == "San"
     assert await page.input_value("#last-name") == "Zhang"
+
+
+async def test_select_combobox_picks_option_aria_portal(
+    browser: BrowserManager, aria_portal_form_url: str
+) -> None:
+    """A pure-ARIA combobox (options in a body-level portal, NO react-select
+    classes) is operable via the standards-first selector."""
+    page = await browser.new_page()
+    await page.goto(aria_portal_form_url)
+
+    executor = ActionExecutor()
+    await executor.execute(
+        page,
+        PageAction(
+            type=ActionType.SELECT_COMBOBOX, selector="#work-auth", value="Yes"
+        ),
+    )
+    assert await page.input_value("#work-auth") == "Yes"
+
+
+async def test_click_radio_option(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    """A radio choice fills via CLICK on the concrete option selector (as the
+    mapper rewrites it), and selecting one deselects its siblings."""
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    executor = ActionExecutor()
+    await executor.execute(
+        page, PageAction(type=ActionType.CLICK, selector="#loc_hybrid")
+    )
+    assert await page.is_checked("#loc_hybrid")
+    assert not await page.is_checked("#loc_remote")
+    assert not await page.is_checked("#loc_onsite")
+
+
+async def test_check_standalone_checkbox(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    executor = ActionExecutor()
+    await executor.execute(
+        page, PageAction(type=ActionType.CHECK, selector="#veteran")
+    )
+    assert await page.is_checked("#veteran")

@@ -79,14 +79,12 @@ async def test_extract_harvests_combobox_options(
     )
 
 
-async def test_extract_excludes_non_react_select_combobox(
+async def test_excludes_unlabeled_search_combobox(
     browser: BrowserManager, apply_form_url: str
 ) -> None:
-    """A role=combobox without react-select's 'select__input' class (the phone
-    widget's country search box) must never be extracted as a fillable field.
-
-    It has no '.select__menu', so treating it as a combobox would only produce
-    a harvest failure and a field nothing can fill.
+    """An unlabeled role=combobox whose accessible name is 'Search' (the phone
+    widget's country search box) must be excluded — via the GENERIC label
+    predicate, with no 'iti-' / 'select__' string in the detection logic.
     """
     page = await browser.new_page()
     await page.goto(apply_form_url)
@@ -94,12 +92,72 @@ async def test_extract_excludes_non_react_select_combobox(
     dom = await DOMExtractor().extract(page)
 
     assert all(el.selector != "#iti-0__search-input" for el in dom.elements)
-    # Exactly one real combobox is detected (the relocation question).
+    # The real relocation question (role=combobox, labelled) is still detected.
     comboboxes = [
         el for el in dom.elements if el.element_type is ElementType.COMBOBOX
     ]
     assert len(comboboxes) == 1
     assert comboboxes[0].selector == "#relocation"
+
+
+async def test_extract_groups_radios_by_name(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    """N radios sharing a name collapse into ONE INPUT_RADIO element carrying
+    options[] + per-option selectors; no individual radios leak through."""
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    dom = await DOMExtractor().extract(page)
+
+    radios = [
+        el for el in dom.elements if el.element_type is ElementType.INPUT_RADIO
+    ]
+    assert len(radios) == 1
+    group = radios[0]
+    assert group.label == "What is your preferred work location?"
+    assert group.options == ["Remote", "Hybrid", "Onsite"]
+    assert set(group.option_selectors) == {"Remote", "Hybrid", "Onsite"}
+    # Each option maps to a distinct concrete selector.
+    assert len(set(group.option_selectors.values())) == 3
+
+
+async def test_extract_finds_standalone_checkbox(
+    browser: BrowserManager, apply_form_url: str
+) -> None:
+    page = await browser.new_page()
+    await page.goto(apply_form_url)
+
+    dom = await DOMExtractor().extract(page)
+
+    checkboxes = [
+        el
+        for el in dom.elements
+        if el.element_type is ElementType.INPUT_CHECKBOX
+        and "veteran" in (el.label or "").lower()
+    ]
+    assert len(checkboxes) == 1
+
+
+async def test_aria_portal_combobox_detected_and_harvested(
+    browser: BrowserManager, aria_portal_form_url: str
+) -> None:
+    """A pure-ARIA combobox whose options render in a body-level portal (NO
+    react-select classes) must be detected and its [role=option] harvested."""
+    page = await browser.new_page()
+    await page.goto(aria_portal_form_url)
+
+    dom = await DOMExtractor().extract(page)
+
+    by_selector = {el.selector: el for el in dom.elements}
+    # The work-auth combobox is detected and its portal options harvested.
+    assert "#work-auth" in by_selector
+    assert by_selector["#work-auth"].element_type is ElementType.COMBOBOX
+    assert by_selector["#work-auth"].options == ["Yes", "No"]
+    # A labelled country picker is intentionally KEPT (explicit label).
+    assert "#country" in by_selector
+    # An unlabeled 'Search' box is excluded.
+    assert "#some-search-box" not in by_selector
 
 
 async def test_extract_skips_aria_hidden_inputs(

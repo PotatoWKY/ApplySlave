@@ -14,7 +14,11 @@ import logging
 from dataclasses import dataclass
 
 from hamster.applicator.llm import DefaultPromptBuilder
-from hamster.applicator.matching import value_matches_option
+from hamster.applicator.matching import (
+    first_matching_index,
+    normalize_option,
+    value_matches_option,
+)
 from hamster.shared import (
     ActionType,
     ElementType,
@@ -114,12 +118,14 @@ class FormMapper:
                 )
             return None
 
-        # Choice controls (native select / combobox) must never be free-text
-        # filled from a label alias. Their value has to be one of the options,
-        # which only the LLM can pick semantically — e.g. "Are you open to
-        # relocation?" must not get the profile's location just because the
+        # Choice controls (select / combobox / radio group / checkbox) must
+        # never be free-text filled from a label alias. Their value has to be
+        # one of the options, which only the LLM can pick semantically — and
+        # demographic / eligibility radios must stay unmapped unless the
+        # profile explicitly answers them (NEVER-FABRICATE). E.g. "Are you open
+        # to relocation?" must not get the profile's location just because the
         # label contains the substring "location".
-        if element.element_type in (ElementType.SELECT, ElementType.COMBOBOX):
+        if element.element_type in _CHOICE_TYPES:
             return None
 
         label = _normalize(element.label or element.placeholder or "")
@@ -164,23 +170,24 @@ class FormMapper:
         element_by_selector = {
             element.selector: element for element in dom.elements
         }
-        type_by_selector = {
-            selector: element.element_type
-            for selector, element in element_by_selector.items()
-        }
         covered_selectors = {action.selector for action in base.actions}
         merged_actions = list(base.actions)
         for action in extra.actions:
             if action.selector in covered_selectors:
                 continue
-            corrected = self._correct_action_type(action, type_by_selector)
-            if not self._action_value_is_valid(corrected, element_by_selector):
+            if not self._action_value_is_valid(action, element_by_selector):
                 # Drop a choice value the element can't accept (an LLM
                 # invention) rather than send it downstream to a guaranteed
                 # execution failure; the field stays unmapped.
                 continue
+            corrected = self._correct_action_type(action, element_by_selector)
+            if corrected is None:
+                continue
             merged_actions.append(corrected)
-            covered_selectors.add(corrected.selector)
+            # Track coverage by the ORIGINAL (group) selector the LLM targeted:
+            # a radio action's selector is rewritten to a per-option selector,
+            # but the element we mark covered is the group at action.selector.
+            covered_selectors.add(action.selector)
 
         # A fillable element is unmapped iff no action targets its selector.
         # Comboboxes whose options couldn't be harvested are neither counted as
@@ -216,50 +223,79 @@ class FormMapper:
         action: PageAction,
         element_by_selector: dict[str, PageElement],
     ) -> bool:
-        """Reject a combobox action whose value isn't a real option.
+        """Reject a combobox/radio action whose value isn't a real option.
 
-        Scoped to SELECT_COMBOBOX (react-select), where the harvested options
-        ARE the only valid click targets, so an out-of-range value is doomed
-        and worth dropping. Native ``<select>`` is intentionally not validated
-        here: the extractor stores option text but the executor's _select also
-        falls back to the ``<option value>`` attribute, so a value-attr match
-        would be wrongly rejected. If options came back empty (harvest
-        failure), we let it pass through — the executor is non-fatal and a
-        human reviews the screenshot, so failing loud beats silently dropping
-        the field. Non-combobox actions are always allowed.
+        For combobox and radio-group elements the harvested options ARE the
+        only valid choices, so an out-of-range value (an LLM invention) is
+        doomed and worth dropping. Native ``<select>`` is intentionally not
+        validated: the extractor stores option text but the executor's _select
+        also falls back to the ``<option value>`` attribute, so a value-attr
+        match would be wrongly rejected. If options came back empty (harvest
+        failure) we let it pass through — the executor is non-fatal and a human
+        reviews the screenshot. Other actions are always allowed.
         """
-        if action.type is not ActionType.SELECT_COMBOBOX:
-            return True
         element = element_by_selector.get(action.selector)
         if element is None or not element.options:
             return True
-        return value_matches_option(action.value, element.options)
+        if element.element_type in (ElementType.COMBOBOX, ElementType.INPUT_RADIO):
+            return value_matches_option(action.value, element.options)
+        return True
 
     def _correct_action_type(
         self,
         action: PageAction,
-        type_by_selector: dict[str, ElementType],
-    ) -> PageAction:
-        """Force a fill action's type to match the element's real type.
+        element_by_selector: dict[str, PageElement],
+    ) -> PageAction | None:
+        """Force a fill action to match the element's real type.
 
-        Whether a control is a native ``<select>`` or a JS combobox is known
-        for certain at extraction time, so we don't let the LLM decide it — a
-        combobox element always gets SELECT_COMBOBOX, a native select gets
-        SELECT, regardless of what the model emitted. This removes a whole
-        class of "Element is not a <select>" failures. Non-value-setting
-        actions (click/check/upload) are left untouched.
+        Whether a control is a native ``<select>``, a JS combobox, or a radio
+        group is known for certain at extraction time, so we don't let the LLM
+        decide it — a combobox always gets SELECT_COMBOBOX, a native select
+        gets SELECT, regardless of what the model emitted. This removes a whole
+        class of "Element is not a <select>" failures.
+
+        Radio groups become a CLICK whose selector is rewritten from the group
+        to the chosen option's concrete <input> selector (looked up in
+        option_selectors). If the value matches no option we return None to
+        drop it. Checkbox / upload / other actions pass through unchanged.
         """
-        element_type = type_by_selector.get(action.selector)
+        element = element_by_selector.get(action.selector)
+        element_type = element.element_type if element else None
         if element_type is ElementType.COMBOBOX:
-            desired = ActionType.SELECT_COMBOBOX
-        elif element_type is ElementType.SELECT:
-            desired = ActionType.SELECT
-        else:
-            return action
+            return self._retype(action, ActionType.SELECT_COMBOBOX)
+        if element_type is ElementType.SELECT:
+            return self._retype(action, ActionType.SELECT)
+        if element_type is ElementType.INPUT_RADIO:
+            index = first_matching_index(
+                normalize_option(action.value or ""), element.options
+            )
+            if index is None:
+                return None
+            option_label = element.options[index]
+            option_selector = element.option_selectors.get(option_label)
+            if option_selector is None:
+                return None
+            return action.model_copy(
+                update={"type": ActionType.CLICK, "selector": option_selector}
+            )
+        return action
+
+    @staticmethod
+    def _retype(action: PageAction, desired: ActionType) -> PageAction:
         if action.type is desired:
             return action
         return action.model_copy(update={"type": desired})
 
+
+# Choice controls: the value must be one of the element's options, so they are
+# never free-text filled by deterministic label matching — only the LLM picks,
+# and demographic/eligibility ones stay unmapped without explicit profile data.
+_CHOICE_TYPES = {
+    ElementType.SELECT,
+    ElementType.COMBOBOX,
+    ElementType.INPUT_RADIO,
+    ElementType.INPUT_CHECKBOX,
+}
 
 _FILLABLE_TYPES = {
     ElementType.INPUT_TEXT,
@@ -268,6 +304,8 @@ _FILLABLE_TYPES = {
     ElementType.TEXTAREA,
     ElementType.SELECT,
     ElementType.COMBOBOX,
+    ElementType.INPUT_RADIO,
+    ElementType.INPUT_CHECKBOX,
 }
 
 

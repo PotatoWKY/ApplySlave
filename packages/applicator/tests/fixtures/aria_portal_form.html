@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ARIA Portal Form</title>
+</head>
+<body>
+  <h1>Apply</h1>
+  <form id="apply-form">
+    <label for="full-name">Full Name</label>
+    <input id="full-name" name="fullName" type="text" required />
+
+    <!-- Standards-only combobox: NO react-select classes anywhere. Options
+         render as [role=option] inside a [role=listbox] appended to
+         document.body (a PORTAL, outside the control's subtree) — proving the
+         generic harvest works without '.select__menu' to lean on. -->
+    <span id="auth-label">Are you authorized to work in the US?</span>
+    <input
+      id="work-auth"
+      role="combobox"
+      type="text"
+      aria-haspopup="listbox"
+      aria-controls="auth-listbox"
+      aria-expanded="false"
+      aria-labelledby="auth-label"
+      autocomplete="off"
+      readonly
+    />
+
+    <!-- A labelled country picker: it has an explicit label ('Country'), so the
+         generic predicate intentionally KEEPS it as a real question. Excluding
+         it would require a library-specific signal we refuse to add. -->
+    <span id="country-label">Country</span>
+    <input
+      id="country"
+      role="combobox"
+      type="text"
+      aria-haspopup="listbox"
+      aria-labelledby="country-label"
+      autocomplete="off"
+      readonly
+    />
+
+    <!-- An unlabeled search box (widget chrome): must be excluded generically. -->
+    <input
+      id="some-search-box"
+      role="combobox"
+      type="text"
+      aria-label="Search"
+      autocomplete="off"
+    />
+
+    <button type="submit">Submit</button>
+  </form>
+
+  <script>
+    // Emulate a portal-rendering ARIA combobox: clicking the control appends a
+    // [role=listbox] of [role=option] to document.body (NOT inside the control).
+    (function () {
+      const OPTIONS = ["Yes", "No"];
+      const input = document.getElementById("work-auth");
+
+      function close() {
+        const existing = document.getElementById("auth-listbox");
+        if (existing) existing.remove();
+        input.setAttribute("aria-expanded", "false");
+      }
+
+      function open() {
+        if (document.getElementById("auth-listbox")) return;
+        const listbox = document.createElement("div");
+        listbox.id = "auth-listbox";
+        listbox.setAttribute("role", "listbox");
+        OPTIONS.forEach((text) => {
+          const opt = document.createElement("div");
+          opt.setAttribute("role", "option");
+          opt.textContent = text;
+          opt.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            input.value = text;
+            close();
+          });
+          listbox.appendChild(opt);
+        });
+        // Portal: append to body, not under the control.
+        document.body.appendChild(listbox);
+        input.setAttribute("aria-expanded", "true");
+      }
+
+      input.addEventListener("click", open);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") close();
+      });
+    })();
+  </script>
+</body>
+</html>

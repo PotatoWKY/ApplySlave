@@ -13,9 +13,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Self
 
-from playwright.async_api import BrowserContext, Page, async_playwright
-
 from hamster.applicator.browser.stealth import STEALTH_INIT_SCRIPT
+from playwright.async_api import BrowserContext, Page, async_playwright
 
 logger = logging.getLogger(__name__)
 

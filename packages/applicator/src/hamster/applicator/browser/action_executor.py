@@ -10,7 +10,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from hamster.applicator.matching import first_matching_index, normalize_option
+from hamster.applicator.matching import (
+    COMBOBOX_OPTION_SELECTOR,
+    first_matching_index,
+    normalize_option,
+)
 from hamster.shared import ActionFailure, ActionType, PageAction
 from playwright.async_api import Page
 
@@ -114,26 +118,27 @@ class ActionExecutor:
             )
 
     async def _select_combobox(self, page: Page, action: PageAction) -> None:
-        """Pick an option in a JS-driven combobox (react-select).
+        """Pick an option in a JS-driven combobox (any role=combobox widget).
 
         Open the control, then click the option whose text matches the value.
-        react-select renders options as `.select__option` only while open, so
-        the click target must be resolved after opening. Match is exact-trimmed
-        first, then a case-insensitive contains fallback for labels that carry
-        extra whitespace or punctuation.
+        Options render only while open and are located via the standards-first
+        COMBOBOX_OPTION_SELECTOR ([role=option], react-select class as fallback),
+        so this works on Greenhouse, Ashby, headless-ui, MUI, etc. Match is
+        exact-trimmed first, then a case-insensitive contains fallback for
+        labels that carry extra whitespace or punctuation.
         """
         if action.value is None:
             raise ActionError(f"combobox requires a value: {action.selector}")
 
         await page.click(action.selector, timeout=self._timeout_ms)
         await page.wait_for_selector(
-            ".select__menu .select__option", timeout=self._timeout_ms
+            COMBOBOX_OPTION_SELECTOR, timeout=self._timeout_ms
         )
 
         # Resolve the option to click from the live menu text, using the same
         # exact-then-contains rule the mapper validated the value against (see
         # hamster.applicator.matching) so the two never disagree.
-        option_locator = page.locator(".select__menu .select__option")
+        option_locator = page.locator(COMBOBOX_OPTION_SELECTOR)
         option_texts = await option_locator.all_text_contents()
         match_index = first_matching_index(
             normalize_option(action.value), option_texts

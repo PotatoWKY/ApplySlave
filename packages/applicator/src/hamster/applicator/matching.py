@@ -10,6 +10,22 @@ from __future__ import annotations
 
 import re
 
+# Standards-first selector for the options of an opened custom dropdown. W3C
+# [role="option"] first (Greenhouse, Ashby, headless-ui, MUI, ...); react-select's
+# private `.select__option` only as a compat fallback. Shared by the extractor's
+# option harvest and the executor's click so the two never target different
+# nodes.
+#
+# The `:visible` pseudo-class is essential: pages often keep UNRELATED, hidden
+# role=option nodes permanently in the DOM (e.g. intl-tel-input's 246 country
+# <li role="option"> for the phone widget). Without :visible, waiting for
+# [role=option] resolves instantly against those hidden nodes and we never see
+# the dropdown we actually opened. Filtering to visible options targets exactly
+# the menu that just opened, on any library.
+COMBOBOX_OPTION_SELECTOR = (
+    '[role="option"]:visible, .select__menu .select__option:visible'
+)
+
 
 def normalize_option(text: str) -> str:
     return text.strip().casefold()

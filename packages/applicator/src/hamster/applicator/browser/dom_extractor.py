@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from hamster.applicator.matching import COMBOBOX_OPTION_SELECTOR
 from hamster.shared import ElementType, PageDOM, PageElement
 from playwright.async_api import Page
 
@@ -79,12 +80,33 @@ _EXTRACT_JS = r"""
         return true;
     }
 
+    function hasExplicitLabel(el) {
+        if (el.getAttribute('aria-labelledby')) return true;
+        if (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`)) {
+            return true;
+        }
+        return !!el.closest('label');
+    }
+
+    function isQuestionCombobox(el) {
+        // Tell a real application question from a widget-internal control
+        // (phone country picker's search box, generic search bars) WITHOUT any
+        // library-specific id/class. Heuristic: a real question carries an
+        // explicit label association; an unlabeled control whose only
+        // accessible name is "Search" is widget chrome, not a question.
+        if (hasExplicitLabel(el)) return true;
+        const label = (resolveLabel(el) || '').trim();
+        if (!label) return false;
+        return !/^search(\s|$)/i.test(label);
+    }
+
     document.querySelectorAll('input:not([type="hidden"])').forEach((el) => {
         if (!isVisible(el)) return;
-        // JS-driven comboboxes (react-select) render as a text input with
-        // role=combobox. They carry no options in the DOM until opened, so
-        // they're collected separately below — skip them here.
+        // Custom comboboxes (role=combobox) carry no options until opened, so
+        // they're collected separately below. Radios are grouped by name in a
+        // dedicated pass. Skip both here to avoid double-counting.
         if (el.getAttribute('role') === 'combobox') return;
+        if (el.type === 'radio') return;
         if (!isInteractable(el)) return;
         out.push({
             tag: 'input',
@@ -97,20 +119,16 @@ _EXTRACT_JS = r"""
         });
     });
 
-    // Comboboxes: react-select question inputs. We require the react-select
-    // 'select__input' class rather than role=combobox alone, because the phone
-    // widget's intl-tel-input injects its own role=combobox search box (id
-    // 'iti-0__search-input', label 'Search') that has no '.select__menu' and
-    // always fails option harvest. That junk control only surfaces once the
-    // networkidle settle below lets the phone widget hydrate, so this class
-    // filter is what keeps the networkidle wait safe. We still exclude #country
-    // (the phone country picker — it carries 'select__input' too but ships a
-    // sensible default and isn't a question) as defense in depth.
-    // NOTE: '.select__input' is react-select's internal class, not a public
-    // API; verified for Greenhouse. Other ATS platforms need re-checking.
-    document.querySelectorAll('input.select__input[role="combobox"]').forEach((el) => {
+    // Custom dropdowns: ANY element with role=combobox (react-select, Ashby's
+    // standard ARIA combobox, headless-ui/MUI, etc.). role=combobox is the
+    // cross-site signal — react-select is just one instance of it. We do NOT
+    // gate on aria-haspopup (ARIA 1.2 made it optional for combobox) nor on any
+    // library CSS class. isQuestionCombobox() drops widget-internal search
+    // boxes generically, so no hard-coded id='country' / 'iti-' is needed.
+    document.querySelectorAll('[role="combobox"]').forEach((el) => {
         if (!isVisible(el)) return;
-        if (el.id === 'country') return;
+        if (!isInteractable(el)) return;
+        if (!isQuestionCombobox(el)) return;
         out.push({
             tag: 'combobox',
             type: 'combobox',
@@ -121,6 +139,49 @@ _EXTRACT_JS = r"""
             selector: buildSelector(el),
         });
     });
+
+    // Radio groups: N <input type=radio> sharing a name are ONE logical
+    // question (mutually exclusive). Collapse each group into a single element
+    // whose options are the per-radio labels and whose option_selectors map
+    // each label to that radio's concrete selector. This both models the
+    // mutual exclusion and keeps forms with dozens of radios (e.g. Lever) under
+    // the prompt's element cap.
+    const radioGroups = {};
+    document.querySelectorAll('input[type="radio"]').forEach((el) => {
+        if (!isVisible(el) || !isInteractable(el)) return;
+        const name = el.name || el.id;
+        if (!name) return;
+        if (!radioGroups[name]) radioGroups[name] = [];
+        radioGroups[name].push(el);
+    });
+    for (const name of Object.keys(radioGroups)) {
+        const members = radioGroups[name];
+        const fieldset = members[0].closest('fieldset');
+        const legend = fieldset ? fieldset.querySelector('legend') : null;
+        const groupLabel = (legend && legend.textContent.trim())
+            || resolveLabel(members[0])
+            || name;
+        const options = [];
+        const optionSelectors = {};
+        for (const member of members) {
+            const optLabel = (resolveLabel(member) || member.value || '').trim();
+            if (!optLabel) continue;
+            options.push(optLabel);
+            optionSelectors[optLabel] = buildSelector(member);
+        }
+        if (!options.length) continue;
+        out.push({
+            tag: 'radio-group',
+            type: 'radio',
+            label: groupLabel,
+            placeholder: null,
+            required: members.some((m) => m.required || m.getAttribute('aria-required') === 'true'),
+            options,
+            option_selectors: optionSelectors,
+            value: null,
+            selector: buildSelector(members[0]),
+        });
+    }
 
     document.querySelectorAll('textarea').forEach((el) => {
         if (!isVisible(el)) return;
@@ -179,14 +240,9 @@ _TYPE_MAP = {
     ("button", "submit"): ElementType.BUTTON,
     ("select", "select"): ElementType.SELECT,
     ("combobox", "combobox"): ElementType.COMBOBOX,
+    ("radio-group", "radio"): ElementType.INPUT_RADIO,
     ("textarea", "textarea"): ElementType.TEXTAREA,
 }
-
-# react-select renders its options as `.select__option` inside a `.select__menu`
-# popup, but only after the control is opened. These selectors drive the
-# open-read-close harvest below.
-_COMBOBOX_MENU_OPTION = ".select__menu .select__option"
-
 
 def _classify(tag: str, raw_type: str | None) -> ElementType:
     key = (tag, (raw_type or "").lower())
@@ -230,6 +286,7 @@ class DOMExtractor:
                     placeholder=raw.get("placeholder") or None,
                     required=bool(raw.get("required")),
                     options=list(raw.get("options") or []),
+                    option_selectors=dict(raw.get("option_selectors") or {}),
                     current_value=raw.get("value") or None,
                     selector=str(raw.get("selector") or ""),
                 )
@@ -245,20 +302,27 @@ class DOMExtractor:
     ) -> None:
         """Fill in `options` for combobox elements by opening each one.
 
-        react-select only renders its options once the control is clicked, so
-        we can't read them in the single DOM pass. For each combobox we open
-        it, read the rendered option labels, then close it with Escape. A
-        combobox we can't open is left with empty options — the mapper treats
-        that as unmapped rather than guessing.
+        A custom dropdown renders its options only once clicked, so we can't
+        read them in the single DOM pass. For each combobox we open it, read the
+        rendered option labels (standard [role=option] first, react-select's
+        private class as a fallback — see COMBOBOX_OPTION_SELECTOR), then close
+        it with Escape. react-select is now just one instance of this generic
+        path. A combobox we can't open is left with empty options — the mapper
+        treats that as unmapped rather than guessing.
         """
         for element in elements:
             if element.element_type is not ElementType.COMBOBOX:
                 continue
             try:
                 await page.click(element.selector, timeout=3_000)
-                await page.wait_for_selector(_COMBOBOX_MENU_OPTION, timeout=3_000)
+                await page.wait_for_selector(
+                    COMBOBOX_OPTION_SELECTOR, timeout=3_000
+                )
+                # COMBOBOX_OPTION_SELECTOR is :visible-scoped, so this reads only
+                # the options of the menu that just opened — not unrelated hidden
+                # role=option nodes the page keeps permanently in the DOM.
                 option_texts = await page.eval_on_selector_all(
-                    _COMBOBOX_MENU_OPTION,
+                    COMBOBOX_OPTION_SELECTOR,
                     "nodes => nodes.map(n => (n.textContent || '').trim())"
                     ".filter(Boolean)",
                 )

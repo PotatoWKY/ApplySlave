@@ -201,7 +201,12 @@ class PageElement(_StrictModel):
     label: str | None = None
     placeholder: str | None = None
     required: bool = False
-    options: list[str] = Field(default_factory=list)  # for select / radio groups
+    options: list[str] = Field(default_factory=list)  # for select / combobox / grouped radio
+    # Maps each option LABEL -> the concrete CSS selector to click for it. Used
+    # for radio groups: the group is one logical element, but each choice is a
+    # distinct <input> sharing the group's name, so picking an option means
+    # clicking its specific selector rather than the group's.
+    option_selectors: dict[str, str] = Field(default_factory=dict)
     # True when a combobox's options could not be read (hydration / extraction
     # failure), as opposed to a control that genuinely has no options. Lets the
     # mapper avoid penalizing confidence for fields that failed extraction
